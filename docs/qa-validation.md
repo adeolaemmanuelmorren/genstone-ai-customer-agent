@@ -60,9 +60,27 @@ actual outcomes for every release candidate.
 - Release `v3` checks every repository-owned Retell configuration field during
   provider readback and has a regression test proving a stale prompt is
   rejected even when node IDs match.
-- The local Doppler session is not authenticated, so migration `0003`, Retell
-  `v3` deployment/readback, and live phone-call validation remain release
-  operations rather than locally claimed successes.
+- Local checks do not replace the production deployment evidence recorded
+  below.
+
+## Production Release Check — 2026-08-10
+
+- All eleven Worker secrets required by current routes synchronized to
+  Cloudflare without storing values in the repository.
+- Migrations `0001`, `0002`, and `0003` applied successfully through the shared
+  PlanetScale connection.
+- A read-only schema query found all seven product-owned tables and all five
+  searchable call-analysis columns; the obsolete support-case reference table
+  is absent.
+- Cloudflare Worker version `838b96f1-9ae0-4a1e-adc9-63d6015905e9` deployed.
+- `GET https://genstone-ai-customer-agent.travis-m.workers.dev/health`
+  returned the expected `ok` product response.
+- Retell release `v3` updated draft agent
+  `agent_f8bfef2720fa80075ac99b6a46`, created Conversation Flow
+  `conversation_flow_4fe57478cfd8` version `0`, created all eight versioned
+  components, and passed complete provider readback.
+- The Retell draft remains unpublished and has no phone-number binding. Live
+  call-path and Twilio transfer validation remain launch work.
 
 ## Live Integration Check — 2026-08-09
 

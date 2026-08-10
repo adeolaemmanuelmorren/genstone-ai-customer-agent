@@ -64,6 +64,7 @@ invent, purchase, or import a number as part of an ordinary deployment.
 
 | Name | Owner | Required | Purpose |
 | --- | --- | --- | --- |
+| `BETTER_AUTH_DATABASE_CONNECTION_STRING` | Doppler-injected migration command secret | Required for production migrations | Supplies the shared PlanetScale Postgres connection to `scripts/apply-sql-migration.mjs`. It is not uploaded to the Worker; production Worker access uses `HYPERDRIVE`. |
 | `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` | Wrangler local binding emulator | Required for local database access | Supplies the local connection string for the binding named `HYPERDRIVE`. |
 
 Local development uses Doppler config `dev`. Production secret synchronization

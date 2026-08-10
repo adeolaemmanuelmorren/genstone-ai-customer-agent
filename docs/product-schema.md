@@ -15,11 +15,12 @@ audit events. Shared `auth` and `core` schemas remain owned by
 
 ## Current State
 
-Migrations `0001_create_genstone_customer_agent.sql` and
-`0002_order_candidate_phone.sql` are applied in production. Migration
-`0003_reliability_and_call_analysis.sql` is the next release migration. It adds
-recoverable execution leases, call-scoped payload-aware idempotency, indexed
-post-call analysis, and removes the unused Zendesk case-reference table.
+Migrations `0001_create_genstone_customer_agent.sql`,
+`0002_order_candidate_phone.sql`, and
+`0003_reliability_and_call_analysis.sql` are applied in production. Migration
+`0003` added recoverable execution leases, call-scoped payload-aware
+idempotency, indexed post-call analysis, and removed the unused Zendesk
+case-reference table.
 
 ## Tables
 

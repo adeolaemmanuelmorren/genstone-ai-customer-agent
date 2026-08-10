@@ -45,8 +45,9 @@ the tool or storage checklist.
   assignee, Type `Question`, normal priority, Ticket Type `Answering Service`,
   explicit `answer_connect`, field-derived `answering_service` and caller-type
   tags, plus Customer Name, Phone, caller type, and Country when known.
-- [ ] Deploy repository release `v3` to update the existing unpublished Retell
-  agent draft, then run Retell QA before publishing.
+- [x] Deploy repository release `v3` to update the existing unpublished Retell
+  agent draft with complete provider readback.
+- [ ] Run Retell call-path QA before publishing.
 
 ### Superseded Retell Draft — 2026-08-09
 
@@ -54,11 +55,11 @@ the tool or storage checklist.
 - Conversation Flow: `conversation_flow_4bd447d96757`, version `0`
 - Knowledge base: `knowledge_base_032c34629284ba5d`
 
-This provider draft predates the deterministic owner routing above and must not
-be published. The repository build is now release `v3`, contains eight shared
-components, and updates this existing agent draft directly. Release `v3`
-performs complete configuration readback before reusing an immutable component
-or flow. Run the draft deployment before Retell QA.
+The old flow listed above predates the deterministic owner routing and must not
+be published. Release `v3` updated the existing agent draft and created eight
+versioned shared components plus Conversation Flow
+`conversation_flow_4fe57478cfd8`, version `0`. Complete provider readback
+passed. The agent remains unpublished and has no phone-number binding.
 
 ## 4. Validation
 
@@ -68,10 +69,9 @@ or flow. Run the draft deployment before Retell QA.
 - Verify Zendesk remains internal-only.
 - Publish the pinned Retell version.
 
-The original foundation and provider integrations were deployed and
-live-validated within the approved test boundaries. Reliability migration
-`0003` and Retell release `v3` are implemented and locally validated but still
-need their production migration/deployment readbacks. The earlier Retell agent
-exists as an API-verified unpublished draft and must not be published in place
-of `v3`. Production phone binding remains a launch blocker. The Customer.io
-messages remain drafts pending launch validation and activation.
+The Worker is deployed as Cloudflare version
+`838b96f1-9ae0-4a1e-adc9-63d6015905e9`, and its production health endpoint
+passed. Reliability migration `0003` and Retell release `v3` are deployed and
+verified by production readback. Production phone binding and live call-path
+QA remain launch blockers. The Customer.io messages remain drafts pending
+launch validation and activation.

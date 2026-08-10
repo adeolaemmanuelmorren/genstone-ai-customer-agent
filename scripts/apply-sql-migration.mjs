@@ -6,7 +6,7 @@ import pg from "pg";
 const { Client } = pg;
 
 const migrationPath = process.argv[2];
-const databaseUrl = process.env.PLANETSCALE_DATABASE_URL;
+const databaseUrl = process.env.BETTER_AUTH_DATABASE_CONNECTION_STRING;
 
 if (!migrationPath) {
   console.error("Usage: node scripts/apply-sql-migration.mjs <migration.sql>");
@@ -14,7 +14,9 @@ if (!migrationPath) {
 }
 
 if (!databaseUrl) {
-  console.error("Set PLANETSCALE_DATABASE_URL before applying migrations.");
+  console.error(
+    "Set BETTER_AUTH_DATABASE_CONNECTION_STRING before applying migrations.",
+  );
   process.exit(1);
 }
 
