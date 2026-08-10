@@ -1,0 +1,18 @@
+export interface CustomerAgentEnv {
+  HYPERDRIVE: Hyperdrive;
+  CALL_ARCHIVE_BUCKET: R2Bucket;
+  ENVIRONMENT?: string;
+  GENSTONE_COMPANY_ID?: string;
+  LOG_LEVEL?: string;
+  GENSTONE_AI_CUSTOMER_AGENT_WORKER_API_KEY?: string;
+  CLOUDRUN_SALESFORCE_API_KEY?: string;
+  CLOUDRUN_SALESFORCE_API_URL?: string;
+  CUSTOMERIO_APP_API_KEY?: string;
+  FIVE9_USERNAME?: string;
+  FIVE9_PASSWORD?: string;
+  RETELL_WEBHOOK_API_KEY_GENSTONE?: string;
+  WOO_CONSUMER_KEY?: string;
+  WOO_CONSUMER_SECRET?: string;
+  ZENDESK_GENSTONE_API_EMAIL?: string;
+  ZENDESK_GESNTONE_API_TOKEN?: string;
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "genstone-ai-customer-agent",
+  "account_id": "6a9aeee0ad18e5d02ed96ff9f2ad30bf",
+  "main": "src/index.ts",
+  "workers_dev": true,
+  "compatibility_date": "2026-08-07",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "placement": {
+    "mode": "smart"
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "4f2b062305f141cba347166c4ee33c62"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "CALL_ARCHIVE_BUCKET",
+      "bucket_name": "genstone-ai-customer-agent-call-archive"
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "production",
+    "GENSTONE_COMPANY_ID": "genstone"
+  }
+
+  // Provider secrets are uploaded separately and are never stored in this file.
+}

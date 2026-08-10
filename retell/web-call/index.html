@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GenStone Retell Voice Test</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">GenStone QA</p>
+      <h1>Retell voice test</h1>
+      <p class="lede">
+        Test the unpublished GenStone agent through your browser microphone.
+        No phone number is required.
+      </p>
+
+      <section class="status-card" aria-live="polite">
+        <span class="status-dot" id="status-dot"></span>
+        <div>
+          <p class="status-label">Status</p>
+          <p class="status-value" id="status">Ready to start</p>
+        </div>
+      </section>
+
+      <div class="controls">
+        <button class="primary" id="start-call" type="button">
+          Start voice test
+        </button>
+        <button id="mute-call" type="button" disabled>Mute</button>
+        <button id="end-call" type="button" disabled>End call</button>
+      </div>
+
+      <p class="call-reference" id="call-reference"></p>
+
+      <section class="test-notes">
+        <h2>What this verifies</h2>
+        <ul>
+          <li>Voice, turn-taking, interruptions, and approved knowledge</li>
+          <li>Conversation Flow routing and web-safe tool paths</li>
+          <li>Named employee failures return to the new-project callback or existing-order Zendesk path</li>
+        </ul>
+        <p>
+          Twilio transfer, caller-ID presentation, and telephone audio still
+          require the purchased production number.
+        </p>
+      </section>
+    </main>
+
+    <script src="/assets/eventemitter3.js"></script>
+    <script src="/assets/livekit.js"></script>
+    <script src="/vendor-aliases.js"></script>
+    <script src="/assets/retell-web-client.js"></script>
+    <script src="/client.js"></script>
+  </body>
+</html>

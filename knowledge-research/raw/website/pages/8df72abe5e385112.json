@@ -1,0 +1,17 @@
+{
+  "url": "https://genstone.com/terms-and-conditions",
+  "sitemap": "page-sitemap.xml",
+  "title": "Terms and Conditions | GenStone",
+  "description": "Visit this page to read our current terms and conditions.",
+  "canonicalUrl": "https://genstone.com/terms-and-conditions",
+  "text": "",
+  "links": [],
+  "embeds": [
+    {
+      "type": "data-id",
+      "value": "92a6e359-97be-4ff9-a7de-7a9f19ace9e1"
+    }
+  ],
+  "httpCode": 200,
+  "effectiveUrl": "https://genstone.com/terms-and-conditions"
+}

@@ -1,0 +1,38 @@
+{
+  "url": "https://genstone.com/products/fireplace-kits",
+  "sitemap": "page-sitemap.xml",
+  "title": "GenStone Fireplace Kits - GenStone",
+  "description": "",
+  "canonicalUrl": "https://genstone.com/products/fireplace-kits",
+  "text": "GenStone Fireplace Kits\nAuthentic Looking, Durable and Easy to Install\n\n&times; Reset Filters\n\nApply Filters\n\nFilters\n\n&times;\n\nShow filters\n\nPrice\n\nApply filters\n\nReset filters\n\nShaffer Fireplace Kit\n$ 2,149.99\nSpecial\nOffers\n\nLearn More Select color\n\nBradford Fireplace Kit\n$ 1,499.99\nSpecial\nOffers\n\nLearn More Select color\n\n1",
+  "links": [
+    {
+      "url": "https://genstone.com/products/fireplace-kits/shaffer-fireplace-kit",
+      "text": ""
+    },
+    {
+      "url": "https://app.optinmonster.com/c/s1fjavejwktqngbt3vt4/",
+      "text": "Special\nOffers"
+    },
+    {
+      "url": "https://genstone.com/products/fireplace-kits/bradford-fireplace-kit",
+      "text": ""
+    },
+    {
+      "url": "https://genstone.com/products/fireplace-kits",
+      "text": "1"
+    }
+  ],
+  "embeds": [
+    {
+      "type": "data-id",
+      "value": "2505000010533"
+    },
+    {
+      "type": "data-id",
+      "value": "2505000012824"
+    }
+  ],
+  "httpCode": 200,
+  "effectiveUrl": "https://genstone.com/products/fireplace-kits"
+}

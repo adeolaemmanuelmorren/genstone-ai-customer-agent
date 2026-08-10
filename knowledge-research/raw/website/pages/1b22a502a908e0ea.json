@@ -1,0 +1,17 @@
+{
+  "url": "https://genstone.com/disclaimer",
+  "sitemap": "page-sitemap.xml",
+  "title": "Disclaimer - GenStone",
+  "description": "Website, External Link, and Testimonial disclaimers from GenStone. Click here to read our disclaimer.",
+  "canonicalUrl": "https://genstone.com/disclaimer",
+  "text": "Fire Rating\nStandard interior or exterior panels are not fire rated unless they are stamped as Class A material",
+  "links": [],
+  "embeds": [
+    {
+      "type": "data-id",
+      "value": "837a467b-111f-47a7-b23a-94b1557f86d8"
+    }
+  ],
+  "httpCode": 200,
+  "effectiveUrl": "https://genstone.com/disclaimer"
+}

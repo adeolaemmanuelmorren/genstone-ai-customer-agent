@@ -1,0 +1,17 @@
+{
+  "url": "https://genstone.com/shipping-policy",
+  "sitemap": "page-sitemap.xml",
+  "title": "Shipping Policy - GenStone",
+  "description": "Click here to view GenStone's shipping policy for all faux stone products.",
+  "canonicalUrl": "https://genstone.com/shipping-policy",
+  "text": "Delivery Dates\n\nWe do not guarantee delivery dates. We can deliver throughout the United States, excluding Hawaii and Alaska in 3 days or less when the product you order is in stock at one or in combination of our four warehouses and the total order is under 120 lbs.\n\nFor orders over 120 lbs, most are delivered in 4 days or less depending on carrier availability.\n\nFor the most up to date delivery information, reach out to our support team by email at [email protected] for a response within 24 hours, Monday through Friday.\n\nSHORTAGES AND DAMAGE\n\nOnce your GenStone is delivered, open each box and take inventory of the pieces you have received. GenStone must receive written notice of all claims regarding damaged or incomplete shipments by email within 7 days of delivery . All claims must be emailed to [email protected] and accompanied by the following details:\n\n- Incomplete Shipments: Your order number and quantities missing by component.\n\n- Damaged Product: Your order number and pictures of the damaged product(s) as well as the box(es) the damaged product was delivered in.\n\nOur fulfillment team will respond to all claims within 24 hours, Monday through Friday.",
+  "links": [
+    {
+      "url": "https://genstone.com/cdn-cgi/l/email-protection",
+      "text": "[email protected]"
+    }
+  ],
+  "embeds": [],
+  "httpCode": 200,
+  "effectiveUrl": "https://genstone.com/shipping-policy"
+}

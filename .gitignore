@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Cloudflare and build output
+.wrangler/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Runtime logs and temporary output
+*.log
+cloudflare.logs
+tmp/
+temp/
+.tmp/
+
+# Local QA and provider exports
+retell-qa-results/
+/knowledge-research/raw/zendesk/
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -1,0 +1,38 @@
+{
+  "url": "https://genstone.com/comparison-hub",
+  "sitemap": "page-sitemap.xml",
+  "title": "Comparison Hub - GenStone",
+  "description": "",
+  "canonicalUrl": "https://genstone.com/comparison-hub",
+  "text": "Faux Stone Comparisons\nThe faux stone industry is filled with products that, on the surface, appear similar. That can make it difficult for consumers to make a final decision on which product is best for their project. To make matters easier, we’ve created a faux panel comparison hub to help you spot the difference between GenStone and ten other faux panel products. Let’s take a closer look.\nGenStone Collection Order Samples\n\nVS\n\n“If you put all together, it's going to look fake.”\n\n- Reviewer\n\n“Aesthetically, this looks like real stone.”\n\n- Reviewer\n\nGenStone vs AirStone\n\nExplore the difference\n\nVS\n\n“I wouldn't trust this to be outside.”\n\n- Reviewer\n\n“I wouldn't be concerned for someone to scratch this.”\n\n- Reviewer\n\nGenStone vs NextStone\n\nExplore the difference\n\nVS\n\n“Any water is going to discolor it.”\n\n- Reviewer\n\n“I think you could put this inside or outside.”\n\n- Reviewer\n\nGenStone vs Silvermine\n\nExplore the difference\n\nQuestions to Ask Before Choosing a Faux Panel Solution\n\nWhat is the difference between masonry and faux panels?\n\nMasonry is a construction method that uses individual units of natural stone or brick to build structures or complete decorative additions. Faux panels are lightweight units engineered to recreate the aesthetics of masonry, but do not have structural components. Faux panels can be installed with basic carpentry skills and without the prohibitive costs of masonry. Faux panels are a more convenient solution for those looking for a high-impact DIY project, while masonry is an option for those with more extensive budgets and construction timelines.\n\nWhat is the faux panel product made of?\n\nA wide variety of products fall under the same umbrella of faux panels, but not all of these products are made in the same way. GenStone faux panels, for example, are made of a high-density polyurethane, which provide for greater insulation and prevent moisture penetration. Other faux panel products are made of polypropylene. While the two materials sound similar, polypropylene has a more plastic appearance that downgrades its authenticity. Concrete faux panels are another common option. These products come at higher prices and are susceptible to chipping before installation.\n\nHow is the faux panel product installed?\n\nOne of the biggest advantages of faux panels over natural stone or brick is the ease of installation. Most faux panel products are specifically designed to be installed by DIYers with minimal construction experience. You’ll want to find the panel system that offers the simplest installation without sacrificing product quality or a sturdy final product. The installation process should be nothing more than measuring, cutting, and attaching the panels.\n\nIs this a DIY project?\n\nMany companies promote their products as DIY, but some projects will require professional labor or equipment to complete. Be sure to choose a faux panel product that is a real DIY experience. That means choosing a faux panel product that can be installed in a matter of days with only basic carpentry skills. You want to avoid getting too far down the road with a product before realizing your project requires more time and money to properly complete.",
+  "links": [
+    {
+      "url": "https://genstone.com/products/stone",
+      "text": "GenStone Collection"
+    },
+    {
+      "url": "https://genstone.com/buy-samples",
+      "text": "Order Samples"
+    },
+    {
+      "url": "https://genstone.com/comparison-hub/genstone-vs-airstone",
+      "text": "VS"
+    },
+    {
+      "url": "https://genstone.com/comparison-hub/genstone-vs-nextstone",
+      "text": "VS"
+    },
+    {
+      "url": "https://genstone.com/comparison-hub/genstone-vs-silvermine",
+      "text": "VS"
+    }
+  ],
+  "embeds": [
+    {
+      "type": "iframe",
+      "url": "https://player.vimeo.com/video/712998554?dnt=1&app_id=122963"
+    }
+  ],
+  "httpCode": 200,
+  "effectiveUrl": "https://genstone.com/comparison-hub"
+}

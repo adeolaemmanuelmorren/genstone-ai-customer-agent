@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "retell/build-config.ts",
+    "retell/build-config.test.ts",
+    "retell/simulation-suite.ts",
+    "retell/simulation-suite.test.ts",
+    "scripts/deploy-retell-agent.ts",
+    "scripts/run-retell-simulations.ts",
+    "scripts/serve-retell-web-call.ts"
+  ]
+}

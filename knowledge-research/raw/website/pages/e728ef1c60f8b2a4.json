@@ -1,0 +1,17 @@
+{
+  "url": "https://genstone.com/communication-preferences",
+  "sitemap": "page-sitemap.xml",
+  "title": "Communication Preferences - GenStone",
+  "description": "",
+  "canonicalUrl": "https://genstone.com/communication-preferences",
+  "text": "Communication Preferences\n\nSign in to your account to manage your communication preferences.",
+  "links": [
+    {
+      "url": "https://genstone.com/account",
+      "text": "Sign in to your account"
+    }
+  ],
+  "embeds": [],
+  "httpCode": 200,
+  "effectiveUrl": "https://genstone.com/communication-preferences"
+}
