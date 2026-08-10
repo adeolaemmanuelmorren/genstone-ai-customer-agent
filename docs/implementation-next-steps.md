@@ -45,9 +45,11 @@ the tool or storage checklist.
   assignee, Type `Question`, normal priority, Ticket Type `Answering Service`,
   explicit `answer_connect`, field-derived `answering_service` and caller-type
   tags, plus Customer Name, Phone, caller type, and Country when known.
-- [x] Deploy repository release `v3` to update the existing unpublished Retell
+- [x] Deploy repository release `v5` to update the existing unpublished Retell
   agent draft with complete provider readback.
-- [ ] Run Retell call-path QA before publishing.
+- [x] Run the fully mocked Retell call-path suite. All nine scenarios pass with
+  deterministic tool-call assertions.
+- [ ] Run live phone and Twilio transfer QA before publishing.
 
 ### Superseded Retell Draft — 2026-08-09
 
@@ -56,10 +58,11 @@ the tool or storage checklist.
 - Knowledge base: `knowledge_base_032c34629284ba5d`
 
 The old flow listed above predates the deterministic owner routing and must not
-be published. Release `v3` updated the existing agent draft and created eight
+be published. Release `v5` updated the existing agent draft and created eight
 versioned shared components plus Conversation Flow
-`conversation_flow_4fe57478cfd8`, version `0`. Complete provider readback
-passed. The agent remains unpublished and has no phone-number binding.
+`conversation_flow_04211cf21adf`, version `0`. Complete provider readback and
+the nine-scenario mocked suite passed. The agent remains unpublished and has no
+phone-number binding.
 
 ## 4. Validation
 
@@ -71,7 +74,7 @@ passed. The agent remains unpublished and has no phone-number binding.
 
 The Worker is deployed as Cloudflare version
 `838b96f1-9ae0-4a1e-adc9-63d6015905e9`, and its production health endpoint
-passed. Reliability migration `0003` and Retell release `v3` are deployed and
+passed. Reliability migration `0003` and Retell release `v5` are deployed and
 verified by production readback. Production phone binding and live call-path
-QA remain launch blockers. The Customer.io messages remain drafts pending
-launch validation and activation.
+and Twilio transfer QA remain launch blockers. The Customer.io messages remain
+drafts pending launch validation and activation.

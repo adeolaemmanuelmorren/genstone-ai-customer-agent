@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildRetellSimulationDefinitions,
   RETELL_SIMULATION_TOOL_COUNT,
+  validateRetellSimulationToolCalls,
 } from "./simulation-suite.js";
 
 const target = {
@@ -50,5 +51,28 @@ describe("Retell simulation suite", () => {
       });
       expect(definition.dynamic_variables?.call_id).toMatch(/^simulation_/);
     }
+  });
+
+  it("checks required and forbidden tools deterministically", () => {
+    const name = "GenStone v5 — Verified shipment email accepted";
+    const correctTranscript = [
+      { role: "tool_call_invocation", name: "lookup_contact" },
+      { role: "tool_call_invocation", name: "lookup_order" },
+      { role: "tool_call_invocation", name: "lookup_shipment" },
+      { role: "tool_call_invocation", name: "email_shipment_tracking" },
+      { role: "tool_call_invocation", name: "extract_dynamic_variables" },
+    ];
+
+    expect(validateRetellSimulationToolCalls(name, correctTranscript)).toEqual([]);
+    expect(
+      validateRetellSimulationToolCalls(name, [
+        ...correctTranscript.slice(0, 2),
+        { role: "tool_call_invocation", name: "create_support_case" },
+      ]),
+    ).toEqual([
+      "Required tool lookup_shipment was not invoked.",
+      "Required tool email_shipment_tracking was not invoked.",
+      "Forbidden tool create_support_case was invoked.",
+    ]);
   });
 });

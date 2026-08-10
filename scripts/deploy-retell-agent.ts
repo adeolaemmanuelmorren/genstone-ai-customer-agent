@@ -53,6 +53,7 @@ function buildAgentConfig(
     max_call_duration_ms: 600_000,
     ambient_sound: "call-center",
     language: "en-US",
+    timezone: "America/Denver",
     data_storage_setting: "everything",
     handbook_config: {
       speech_normalization: true,

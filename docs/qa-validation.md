@@ -51,13 +51,13 @@ actual outcomes for every release candidate.
 
 ## Local Reliability Validation — 2026-08-10
 
-- Twelve test files with thirty-eight tests pass.
+- Twelve test files with thirty-nine tests pass.
 - Worker and Retell TypeScript checks pass.
 - The Wrangler production-shape dry run completes and reports the expected
   Hyperdrive, private R2, environment, and company bindings. Wrangler cannot
   write its optional desktop log file inside the restricted Codex sandbox, but
   the bundle and binding validation complete successfully.
-- Release `v3` checks every repository-owned Retell configuration field during
+- Release `v5` checks every repository-owned Retell configuration field during
   provider readback and has a regression test proving a stale prompt is
   rejected even when node IDs match.
 - Local checks do not replace the production deployment evidence recorded
@@ -75,10 +75,14 @@ actual outcomes for every release candidate.
 - Cloudflare Worker version `838b96f1-9ae0-4a1e-adc9-63d6015905e9` deployed.
 - `GET https://genstone-ai-customer-agent.travis-m.workers.dev/health`
   returned the expected `ok` product response.
-- Retell release `v3` updated draft agent
+- Retell release `v5` updated draft agent
   `agent_f8bfef2720fa80075ac99b6a46`, created Conversation Flow
-  `conversation_flow_4fe57478cfd8` version `0`, created all eight versioned
+  `conversation_flow_04211cf21adf` version `0`, created all eight versioned
   components, and passed complete provider readback.
+- Mocked Retell batch `test_batch_a32f9872c257` passed all nine conversation
+  scenarios with zero errors and zero deterministic tool-call violations. The
+  deterministic gate independently requires shipment tools and rejects support
+  or callback tools on shipment-email scenarios.
 - The Retell draft remains unpublished and has no phone-number binding. Live
   call-path and Twilio transfer validation remain launch work.
 

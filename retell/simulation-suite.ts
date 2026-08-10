@@ -1,6 +1,6 @@
 import type { TestCreateTestCaseDefinitionParams } from "retell-sdk/resources/tests";
 
-export const RETELL_SIMULATION_RELEASE = "v3";
+export const RETELL_SIMULATION_RELEASE = "v5";
 
 export interface RetellSimulationTarget {
   conversationFlowId: string;
@@ -35,6 +35,8 @@ type SimulationScenario = {
   userPrompt: string;
   metrics: string[];
   toolResults?: Partial<Record<RetellToolName, ToolResult>>;
+  requiredTools?: RetellToolName[];
+  forbiddenTools?: RetellToolName[];
 };
 
 const COMMON_METRICS = [
@@ -90,9 +92,10 @@ Do not ask for a callback, quote, price, or turnaround time.
 `.trim(),
     metrics: [
       "The agent directs the caller to genstone.com/visualizer and does not invent pricing or turnaround time.",
-      "The agent answers without calling any custom function.",
+      "The agent answers without calling a GenStone integration tool. Retell's built-in variable extraction and end-call actions are allowed.",
       ...COMMON_METRICS,
     ],
+    forbiddenTools: [...RETELL_TOOL_NAMES],
   },
   {
     slug: "new-prospect-follow-up",
@@ -151,6 +154,8 @@ Do not provide an alternate email. End after the verified tracking answer.
         "UPS tracking 1ZTEST5550101, shipped August 7, 2026.",
       ),
     },
+    requiredTools: ["lookup_contact", "lookup_order", "lookup_shipment"],
+    forbiddenTools: ["email_shipment_tracking", "create_support_case", "schedule_callback"],
   },
   {
     slug: "shipment-email-accepted",
@@ -166,7 +171,8 @@ Say this is an existing order and ask for tracking. Confirm the phone, order ite
 Confirm the email request. Never request an alternate recipient. End after the agent confirms the send.
 `.trim(),
     metrics: [
-      "The agent invokes email_shipment_tracking only after order verification and explicit email acceptance.",
+      "The transcript contains tool invocations named lookup_shipment and email_shipment_tracking after order verification and explicit email acceptance.",
+      "The transcript does not contain create_support_case or schedule_callback.",
       "The agent confirms the shipment email without speaking the full email address or offering an alternate recipient.",
       ...COMMON_METRICS,
     ],
@@ -187,6 +193,13 @@ Confirm the email request. Never request an alternate recipient. End after the a
       ),
       email_shipment_tracking: successfulResult("sent"),
     },
+    requiredTools: [
+      "lookup_contact",
+      "lookup_order",
+      "lookup_shipment",
+      "email_shipment_tracking",
+    ],
+    forbiddenTools: ["create_support_case", "schedule_callback"],
   },
   {
     slug: "tracked-support-create",
@@ -256,7 +269,9 @@ Confirm the callback details and end after acceptance.
 `.trim(),
     metrics: [
       "The agent resolves the independently named employee but does not attempt a Call Transfer because call_type is web_call.",
+      "Before using callback fallback, the agent does not promise or announce that it will transfer or connect the caller.",
       "The agent uses the centralized callback path and never speaks the employee transfer destination.",
+      "The agent accepts Tuesday, August 11, 2026 at 11:00 AM Mountain as the next-business-day callback and does not move it to August 12.",
       ...COMMON_METRICS,
     ],
     toolResults: {
@@ -266,6 +281,8 @@ Confirm the callback details and end after acceptance.
       }),
       schedule_callback: successfulResult("scheduled"),
     },
+    requiredTools: ["lookup_active_employee", "schedule_callback"],
+    forbiddenTools: ["create_support_case"],
   },
   {
     slug: "explicit-dnc-different-number",
@@ -322,7 +339,7 @@ export function buildRetellSimulationDefinitions(
   target: RetellSimulationTarget,
 ): TestCreateTestCaseDefinitionParams[] {
   return SCENARIOS.map((scenario) => ({
-    name: `GenStone ${RETELL_SIMULATION_RELEASE} — ${scenario.title}`,
+    name: buildTestName(scenario),
     response_engine: {
       type: "conversation-flow",
       conversation_flow_id: target.conversationFlowId,
@@ -338,6 +355,61 @@ export function buildRetellSimulationDefinitions(
     },
     tool_mocks: buildToolMocks(scenario.toolResults),
   }));
+}
+
+export function validateRetellSimulationToolCalls(
+  testName: string,
+  transcript: unknown,
+): string[] {
+  const scenario = SCENARIOS.find(
+    (candidate) => buildTestName(candidate) === testName,
+  );
+
+  if (!scenario) {
+    return [`No local scenario matches ${testName}.`];
+  }
+
+  const invokedTools = readInvokedToolNames(transcript);
+  const errors: string[] = [];
+
+  for (const toolName of scenario.requiredTools ?? []) {
+    if (!invokedTools.has(toolName)) {
+      errors.push(`Required tool ${toolName} was not invoked.`);
+    }
+  }
+
+  for (const toolName of scenario.forbiddenTools ?? []) {
+    if (invokedTools.has(toolName)) {
+      errors.push(`Forbidden tool ${toolName} was invoked.`);
+    }
+  }
+
+  return errors;
+}
+
+function buildTestName(scenario: SimulationScenario): string {
+  return `GenStone ${RETELL_SIMULATION_RELEASE} — ${scenario.title}`;
+}
+
+function readInvokedToolNames(transcript: unknown): Set<string> {
+  if (!Array.isArray(transcript)) {
+    return new Set();
+  }
+
+  const names = transcript.flatMap((message) => {
+    if (!message || typeof message !== "object") {
+      return [];
+    }
+
+    const record = message as Record<string, unknown>;
+    if (record.role !== "tool_call_invocation" || typeof record.name !== "string") {
+      return [];
+    }
+
+    return [record.name];
+  });
+
+  return new Set(names);
 }
 
 export const RETELL_SIMULATION_TOOL_COUNT = RETELL_TOOL_NAMES.length;

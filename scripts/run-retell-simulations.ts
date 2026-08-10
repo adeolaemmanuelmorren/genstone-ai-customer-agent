@@ -13,6 +13,7 @@ import type {
 import {
   buildRetellSimulationDefinitions,
   RETELL_SIMULATION_TOOL_COUNT,
+  validateRetellSimulationToolCalls,
   type RetellSimulationTarget,
 } from "../retell/simulation-suite.js";
 
@@ -49,6 +50,15 @@ function assertEveryToolIsMocked(
   throw new Error(
     `${definition.name} does not mock every Retell tool. Refusing to run a simulation that could call a live provider.`,
   );
+}
+
+function readTranscript(snapshot: unknown): unknown[] {
+  if (!snapshot || typeof snapshot !== "object") {
+    return [];
+  }
+
+  const transcript = (snapshot as Record<string, unknown>).transcript;
+  return Array.isArray(transcript) ? transcript : [];
 }
 
 async function listTestCaseDefinitions(
@@ -252,6 +262,16 @@ async function main() {
       result_explanation: run.result_explanation,
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
+  const deterministicToolFailures = runs.flatMap((run) =>
+    validateRetellSimulationToolCalls(
+      run.test_case_definition_snapshot.name,
+      readTranscript(run.transcript_snapshot),
+    ).map((error) => ({
+      test_case_job_id: run.test_case_job_id,
+      name: run.test_case_definition_snapshot.name,
+      error,
+    })),
+  );
 
   console.log(
     JSON.stringify(
@@ -263,6 +283,7 @@ async function main() {
         failed: batch.fail_count,
         errors: batch.error_count,
         report_path: reportPath,
+        deterministic_tool_failures: deterministicToolFailures,
         runs: runSummaries,
       },
       null,
@@ -270,7 +291,11 @@ async function main() {
     ),
   );
 
-  if (batch.fail_count > 0 || batch.error_count > 0) {
+  if (
+    batch.fail_count > 0 ||
+    batch.error_count > 0 ||
+    deterministicToolFailures.length > 0
+  ) {
     process.exitCode = 1;
   }
 }

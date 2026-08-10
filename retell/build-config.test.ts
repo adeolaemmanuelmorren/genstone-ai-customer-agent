@@ -36,8 +36,8 @@ describe("Retell build config", () => {
     expect(builds.map((build) => build.config.name)).toEqual(
       Object.values(RETELL_SHARED_COMPONENT_NAMES),
     );
-    expect(RETELL_BUILD_CONSTANTS.flowRelease).toBe("genstone_customer_agent_v3");
-    expect(Object.values(RETELL_SHARED_COMPONENT_NAMES).every((name) => name.endsWith("v3"))).toBe(true);
+    expect(RETELL_BUILD_CONSTANTS.flowRelease).toBe("genstone_customer_agent_v5");
+    expect(Object.values(RETELL_SHARED_COMPONENT_NAMES).every((name) => name.endsWith("v5"))).toBe(true);
   });
 
   it("has no existing-order callback edge", () => {

@@ -12,8 +12,8 @@ type ComponentTool = NonNullable<Component["tools"]>[number];
 
 const WORKER_BASE_URL = "https://genstone-ai-customer-agent.travis-m.workers.dev";
 const KNOWLEDGE_BASE_ID = "knowledge_base_032c34629284ba5d";
-const SHARED_COMPONENT_RELEASE = "v3";
-const FLOW_RELEASE = "genstone_customer_agent_v3";
+const SHARED_COMPONENT_RELEASE = "v5";
+const FLOW_RELEASE = "genstone_customer_agent_v5";
 
 export const RETELL_SHARED_COMPONENT_NAMES = {
   "Contact Lookup": `GenStone — Contact Lookup — ${SHARED_COMPONENT_RELEASE}`,
@@ -327,6 +327,7 @@ function componentFunction(
   id: string,
   toolName: string,
   destinationNodeId: string,
+  speakDuringExecution = true,
 ): ComponentNode {
   return {
     id,
@@ -335,7 +336,7 @@ function componentFunction(
     tool_id: `tool_${toolName}`,
     tool_type: "local",
     wait_for_result: true,
-    speak_during_execution: true,
+    speak_during_execution: speakDuringExecution,
     edges: [alwaysEdge(`${id}_always`, destinationNodeId)],
   } as ComponentNode;
 }
@@ -1033,7 +1034,7 @@ function createCallbackComponent(workerApiKey: string): Component {
       componentConversation({
         id: "C_Collect_Callback_Request",
         instruction:
-          "This component is only for a new project. Collect the caller's name if it is not already known. Propose a broad subject from the conversation and allow correction. Collect a preferred date, Mountain time, and callback phone. Earliest is the next business day; use weekdays from 8:30 AM through 4:30 PM Mountain and exclude U.S. federal holidays.",
+          "This component is only for a new project. Collect the caller's name if it is not already known. Propose a broad subject from the conversation and allow correction. Collect a preferred date, Mountain time, and callback phone. Use the current date in the agent's America/Denver timezone. Earliest is the next business day: if today is Monday, Tuesday is valid unless it is a U.S. federal holiday. Do not add an extra day. Use weekdays from 8:30 AM through 4:30 PM Mountain and exclude U.S. federal holidays.",
         alwaysDestination: "X_Callback_Request",
       }),
       componentExtract({
@@ -1124,13 +1125,37 @@ function createNamedEmployeeTransferComponent(workerApiKey: string): Component {
         ],
         destinationNodeId: "F_Lookup_Active_Employee",
       }),
-      componentFunction("F_Lookup_Active_Employee", "lookup_active_employee", "L_Employee_Result"),
+      componentFunction(
+        "F_Lookup_Active_Employee",
+        "lookup_active_employee",
+        "L_Employee_Result",
+        false,
+      ),
       componentBranch({
         id: "L_Employee_Result",
         edges: [
-          equationEdge("employee_found", "C_Confirm_Named_Transfer", "employee_lookup_status", "==", "found"),
+          equationEdge("employee_found", "L_Employee_Channel", "employee_lookup_status", "==", "found"),
         ],
         elseDestination: "E_Named_Employee_Transfer",
+      }),
+      componentBranch({
+        id: "L_Employee_Channel",
+        edges: [
+          equationEdge(
+            "employee_found_phone_call",
+            "C_Confirm_Named_Transfer",
+            "call_type",
+            "==",
+            "phone_call",
+          ),
+        ],
+        elseDestination: "C_Web_Call_Transfer_Fallback",
+      }),
+      componentConversation({
+        id: "C_Web_Call_Transfer_Fallback",
+        instruction:
+          "Explain that this call channel cannot make a live connection, so you will use the normal follow-up path. Do not say a transfer was attempted, promise a transfer, or imply the employee is unavailable.",
+        alwaysDestination: "E_Named_Employee_Transfer",
       }),
       componentConversation({
         id: "C_Confirm_Named_Transfer",
@@ -1382,7 +1407,7 @@ function buildMainNodes(
     conversationNode({
       id: "C_Order_Help",
       instruction:
-        "Ask how the caller needs help, or repeat back the issue already supplied. Classify only as direct answer, shipment, or tracked support. Existing-order callbacks are not allowed.",
+        "Ask how the caller needs help, or repeat back the issue already supplied. Classify tracking numbers, carrier status, shipped status, delivery or arrival questions, and requests to email shipment details as shipment. Use tracked support only for a non-shipment order issue that requires customer-service follow-up. Use direct answer only when verified order data or approved knowledge already answers the question. Existing-order callbacks are not allowed.",
       alwaysDestination: "X_Order_Help_Outcome",
     }),
     extractNode({
@@ -1557,7 +1582,7 @@ function buildMainNodes(
     conversationNode({
       id: "G_Human_Request",
       instruction:
-        "If the caller already named an employee, use named employee transfer. Otherwise use the follow-up for the already-classified primary route. Never ask a generic requester to choose a person or department.",
+        "If the caller already named an employee, say you will check whether that person can be connected, then use named employee transfer. Do not promise or announce a transfer before the channel and employee lookup permit it. Otherwise use the follow-up for the already-classified primary route. Never ask a generic requester to choose a person or department.",
       edges: [
         promptEdge("human_named_employee", "TRANSFER_Named_Employee", "The caller independently supplied an employee name."),
       ],
@@ -1629,7 +1654,7 @@ export function buildConversationFlowConfig(
     flex_mode: false,
     tool_call_strict_mode: true,
     global_prompt:
-      "Follow the current node contract exactly. For new-project follow-up, use Salesforce contact lookup, then Prospect Follow-Up when the contact is not found or Callback for the other routed results. Unresolved existing-order work uses Tracked Support and never callback scheduling. Use only confirmed caller facts, verified tool results, and approved knowledge. Never speak opaque tokens, direct employee numbers, internal addresses, provider names, credentials, or raw errors. Never invent an outcome, promise, department, capability, ETA, or policy.",
+      "Follow the current node contract exactly. For new-project follow-up, use Salesforce contact lookup, then Prospect Follow-Up when the contact is not found or Callback for the other routed results. A verified existing-order request about tracking, shipping status, delivery, arrival, carrier information, or emailing shipment details always uses Shipment before any support fallback. Other unresolved existing-order work uses Tracked Support and never callback scheduling. Use only confirmed caller facts, verified tool results, and approved knowledge. Never speak opaque tokens, direct employee numbers, internal addresses, provider names, credentials, or raw errors. Never invent an outcome, promise, department, capability, ETA, or policy.",
     default_dynamic_variables: defaultDynamicVariables,
     knowledge_base_ids: [KNOWLEDGE_BASE_ID],
     kb_config: {
@@ -1637,7 +1662,7 @@ export function buildConversationFlowConfig(
       filter_score: 0.6,
     },
     notes: [
-      { id: FLOW_RELEASE, content: "Immutable GenStone Retell draft release v3", display_position: { x: -300, y: -200 }, size: { width: 260, height: 90 } },
+      { id: FLOW_RELEASE, content: "Immutable GenStone Retell draft release v5", display_position: { x: -300, y: -200 }, size: { width: 260, height: 90 } },
       { id: "note_main_router", content: "Main router", display_position: { x: 0, y: 0 }, size: { width: 220, height: 90 } },
       { id: "note_new_project", content: "New-project path", display_position: { x: -650, y: 450 }, size: { width: 220, height: 90 } },
       { id: "note_existing_order", content: "Existing-order path", display_position: { x: 450, y: 450 }, size: { width: 220, height: 90 } },
