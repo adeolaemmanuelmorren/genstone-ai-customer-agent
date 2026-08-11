@@ -168,7 +168,7 @@ function buildSourcesReviewed(inventory, ledger) {
   const lines = [
     "# Sources Reviewed",
     "",
-    "> Draft research record. The website and call-transcript phases are complete; Zendesk will be added next in source order.",
+    "> Draft research record. The website and call-transcript phases are complete. Zendesk collection stopped at the revised scope recorded below and was not treated as a complete ticket-comment review.",
     "",
     "## GenStone Website",
     "",
@@ -229,7 +229,10 @@ function buildSourcesReviewed(inventory, ledger) {
     "",
     "## Zendesk Tickets",
     "",
-    "Pending export and review. The prerequisite transcript review is complete.",
+    "- Ticket cursor result: **126,466 of 126,466 ticket records exported**; Zendesk reported end-of-stream.",
+    "- Comment-event checkpoint: **417 pages**, **418,105 ticket events**, and **260,051 observed comment events** through **August 27, 2024**; the stream did not reach end-of-stream.",
+    "- Locally deduplicated checkpoint: **255,296 unique comment IDs across 97,240 tickets**.",
+    "- Review result: collected but not read ticket-by-ticket and not merged into caller-facing topics.",
     "",
   ];
 

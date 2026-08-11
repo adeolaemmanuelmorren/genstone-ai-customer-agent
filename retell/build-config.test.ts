@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildAgentConfig,
   buildConversationFlowConfig,
   buildSharedComponentConfigs,
   RETELL_BUILD_CONSTANTS,
@@ -16,102 +17,116 @@ const sharedComponentIds = Object.fromEntries(
 ) as RetellSharedComponentIds;
 
 describe("Retell build config", () => {
-  it("references only the supplied shared subflow IDs", () => {
-    const flow = buildConversationFlowConfig({ sharedComponentIds });
-    const componentNodes = flow.nodes.filter((node) => node.type === "component");
-
-    expect(flow.components).toBeUndefined();
-    expect(componentNodes.length).toBeGreaterThan(0);
-    expect(componentNodes.every((node) => node.component_type === "shared")).toBe(true);
-    expect(new Set(componentNodes.map((node) => node.component_id))).toEqual(
-      new Set(Object.values(sharedComponentIds)),
-    );
-    expect(flow.notes?.some((note) => note.id === RETELL_BUILD_CONSTANTS.flowRelease)).toBe(true);
-  });
-
-  it("builds eight versioned GenStone-only shared subflows", () => {
+  it("builds one subagent and one exit for every shared responsibility", () => {
     const builds = buildSharedComponentConfigs({ workerApiKey: "test-worker-key" });
 
     expect(builds).toHaveLength(8);
     expect(builds.map((build) => build.config.name)).toEqual(
       Object.values(RETELL_SHARED_COMPONENT_NAMES),
     );
-    expect(RETELL_BUILD_CONSTANTS.flowRelease).toBe("genstone_customer_agent_v5");
-    expect(Object.values(RETELL_SHARED_COMPONENT_NAMES).every((name) => name.endsWith("v5"))).toBe(true);
+    expect(builds.every((build) => (
+      build.config.nodes.length === 2
+      && build.config.nodes[0]?.type === "subagent"
+      && build.config.nodes[1]?.type === "end"
+    ))).toBe(true);
+    expect(RETELL_BUILD_CONSTANTS.flowRelease).toBe("genstone_customer_agent_v49");
+    expect(Object.values(RETELL_SHARED_COMPONENT_NAMES).every(
+      (name) => name.endsWith("v49"),
+    )).toBe(true);
   });
 
-  it("has no existing-order callback edge", () => {
-    const builds = buildSharedComponentConfigs({ workerApiKey: "test-worker-key" });
+  it("keeps the main router small and always asks new project or existing order", () => {
     const flow = buildConversationFlowConfig({ sharedComponentIds });
-    const serializedBuild = JSON.stringify({ builds, flow });
+    const callerName = flow.nodes.find((node) => node.id === "X_Caller_Name");
 
-    expect(serializedBuild).toContain("send_prospect_follow_up");
-    expect(serializedBuild).toContain("Prospect Follow-Up");
-    expect(serializedBuild).not.toContain("CB_Order");
-    expect(serializedBuild).not.toContain("CB_Shipment");
-    expect(serializedBuild).not.toContain("CB_Support");
-
-    const orderVerification = flow.nodes.find(
-      (node) => node.type === "branch" && node.id === "L_Order_Verified",
-    );
-
-    if (!orderVerification || orderVerification.type !== "branch") {
-      throw new Error("Order verification branch was not built.");
-    }
-
-    expect(orderVerification.else_edge?.destination_node_id).toBe(
-      "SUP_Order_Unverified",
-    );
+    expect(flow.start_node_id).toBe("C_Greet_Name");
+    expect(flow.nodes).toHaveLength(21);
+    expect(JSON.stringify(callerName)).toContain("C_Greet_And_Route");
+    expect(JSON.stringify(flow)).not.toContain("existing_order_intent");
+    expect(flow.nodes.some((node) => node.id === "L_Initial_Route")).toBe(false);
+    expect(flow.nodes.some((node) => node.id.startsWith("L_Shipment_Result"))).toBe(false);
+    expect(flow.nodes.some((node) => node.id.startsWith("L_Support_Result"))).toBe(false);
+    expect(flow.nodes.some((node) => node.id.startsWith("L_Callback_Component_Result"))).toBe(false);
+    expect(flow.nodes.some((node) => node.id === "L_Post_Verification_Request")).toBe(true);
+    expect(flow.nodes.some((node) => node.id === "C_Close_Answered")).toBe(false);
   });
 
-  it("binds callback and Zendesk tools to opposite primary routes", () => {
-    const builds = buildSharedComponentConfigs({ workerApiKey: "test-worker-key" });
-    const callback = builds.find((build) => build.componentName === "Callback");
-    const support = builds.find((build) => build.componentName === "Tracked Support");
-    const callbackTool = callback?.config.tools?.find(
-      (tool) => tool.type === "custom" && tool.name === "schedule_callback",
-    );
-    const supportTool = support?.config.tools?.find(
-      (tool) => tool.type === "custom" && tool.name === "create_support_case",
-    );
+  it("lets the order subagent conduct verification while tools enforce data boundaries", () => {
+    const order = buildSharedComponentConfigs({ workerApiKey: "test-worker-key" })
+      .find((build) => build.componentName === "Order Verification");
+    const serialized = JSON.stringify(order);
 
-    if (!callbackTool || callbackTool.type !== "custom") {
-      throw new Error("Callback tool was not built.");
-    }
-    if (!supportTool || supportTool.type !== "custom") {
-      throw new Error("Support tool was not built.");
-    }
-
-    const callbackParameters = callbackTool.parameters as {
-      properties: Record<string, unknown>;
-      required: string[];
-    };
-    const supportParameters = supportTool.parameters as {
-      properties: Record<string, unknown>;
-      required: string[];
-    };
-
-    expect(callbackParameters.properties.primary_route).toMatchObject({
-      const: "new_project",
-    });
-    expect(supportParameters.properties.primary_route).toMatchObject({
-      const: "existing_order",
-    });
-    expect(supportParameters.required).toEqual(
-      expect.arrayContaining([
-        "customer_name",
-        "confirmed_phone",
-        "caller_type",
-      ]),
-    );
-    expect(JSON.stringify(support)).not.toContain("lookup_support_cases");
-    expect(JSON.stringify(support)).not.toContain("selected_case_token");
-    expect(JSON.stringify(support)).not.toContain("case_action");
+    expect(order?.config.tools?.map((tool) => tool.name)).toEqual([
+      "lookup_order",
+      "lookup_order_alternate",
+      "lookup_next_order",
+    ]);
+    expect(serialized).toContain("ask once for the GenStone order number");
+    expect(serialized).toContain("without asking for the order number again");
+    expect(serialized).toContain("last four digits");
+    expect(serialized).not.toContain('"identifier":{"type":"string","description":"Caller-confirmed order phone.","const":"{{confirmed_phone}}"}');
+    expect(serialized).toContain("order_type_summary");
+    expect(serialized).toContain("order_items_confirmed=true");
+    expect(serialized).toContain("order_verified=true");
+    expect(serialized).toContain("Great. What can I help you with?");
+    expect(serialized).toContain("Do not announce or repeat that the order was verified");
+    expect(serialized).not.toContain("F_Lookup_Order_By_Phone");
+    expect(serialized).not.toContain("S_Request_Order_Number");
   });
 
-  it("records prospect follow-up as a final outcome", () => {
+  it("keeps support collection and the Zendesk write in one subagent", () => {
+    const support = buildSharedComponentConfigs({ workerApiKey: "test-worker-key" })
+      .find((build) => build.componentName === "Tracked Support");
+    const serialized = JSON.stringify(support);
+
+    expect(serialized).toContain("create_support_case");
+    expect(serialized).toContain("issue the caller already described");
+    expect(serialized).toContain("caller_email");
+    expect(serialized).toContain("they'll be in touch as soon as possible");
+    expect(serialized).not.toContain("X_Support_Details");
+    expect(serialized).not.toContain("F_Create_Support_Case");
+  });
+
+  it("does not narrate successful Salesforce contact lookup", () => {
+    const contact = buildSharedComponentConfigs({ workerApiKey: "test-worker-key" })
+      .find((build) => build.componentName === "Contact Lookup");
+    const serialized = JSON.stringify(contact);
+
+    expect(serialized).toContain("Never announce the contact-lookup result");
+    expect(serialized).toContain("ask which email the team should use for follow-up");
+  });
+
+  it("keeps warm transfer inside the named-employee subagent", () => {
+    const transfer = buildSharedComponentConfigs({ workerApiKey: "test-worker-key" })
+      .find((build) => build.componentName === "Named Employee Transfer");
+    const serialized = JSON.stringify(transfer);
+
+    expect(serialized).toContain("lookup_active_employee");
+    expect(serialized).toContain('"type":"transfer_call"');
+    expect(serialized).toContain('"type":"warm_transfer"');
+    expect(serialized).toContain('"show_transferee_as_caller":true');
+    expect(serialized).not.toContain("L_Employee_Channel");
+  });
+
+  it("does not let a generic human request bypass the current business path", () => {
     const flow = buildConversationFlowConfig({ sharedComponentIds });
-    expect(JSON.stringify(flow)).toContain("prospect_follow_up");
+    const humanRequest = flow.nodes.find((node) => node.id === "G_Human_Request");
+    const serialized = JSON.stringify(humanRequest);
+
+    expect(serialized).toContain("human_named_employee");
+    expect(serialized).not.toContain("human_existing_order");
+    expect(serialized).not.toContain("human_new_callback");
+    expect(serialized).not.toContain("human_new_help");
+  });
+
+  it("delays Salesforce contact lookup until an existing order needs support", () => {
+    const flow = buildConversationFlowConfig({ sharedComponentIds });
+    const serialized = JSON.stringify(flow);
+
+    expect(serialized).toContain('"greet_existing_order"');
+    expect(serialized).toContain('"destination_node_id":"ORDER_Verification"');
+    expect(serialized).toContain('"id":"SF_Contact_Existing_Support"');
+    expect(serialized).not.toContain('"id":"SF_Contact_Existing_Order"');
   });
 
   it("routes every main-flow edge to an existing node", () => {
@@ -119,93 +134,30 @@ describe("Retell build config", () => {
     const nodeIds = new Set(flow.nodes.map((node) => node.id));
 
     for (const node of flow.nodes) {
-      const destinations = readDestinations(node);
-
-      for (const destination of destinations) {
-        expect(nodeIds.has(destination), `${node.id} -> ${destination}`).toBe(true);
-      }
-    }
-  });
-
-  it("routes every shared-component edge to a node in that component", () => {
-    const builds = buildSharedComponentConfigs({ workerApiKey: "test-worker-key" });
-
-    for (const build of builds) {
-      const nodeIds = new Set(build.config.nodes.map((node) => node.id));
-      for (const node of build.config.nodes) {
-        for (const destination of readDestinations(node)) {
-          expect(
-            nodeIds.has(destination),
-            `${build.componentName}: ${node.id} -> ${destination}`,
-          ).toBe(true);
+      if ("edges" in node) {
+        for (const edge of node.edges ?? []) {
+          if (edge.destination_node_id) {
+            expect(nodeIds.has(edge.destination_node_id)).toBe(true);
+          }
         }
       }
+      if (node.type === "branch" && node.else_edge?.destination_node_id) {
+        expect(nodeIds.has(node.else_edge.destination_node_id)).toBe(true);
+      }
+      if (node.type === "component" && node.else_edge?.destination_node_id) {
+        expect(nodeIds.has(node.else_edge.destination_node_id)).toBe(true);
+      }
     }
   });
 
-  it("maps the employee lookup response and gates transfer on a phone call", () => {
-    const build = buildSharedComponentConfigs({
-      workerApiKey: "test-worker-key",
-    }).find(
-      (candidate) => candidate.componentName === "Named Employee Transfer",
-    );
+  it("pins the approved model and full Retell storage", () => {
+    const agent = buildAgentConfig("conversation_flow_test", 0);
 
-    expect(build).toBeDefined();
-
-    const lookupTool = build?.config.tools?.find(
-      (tool) => tool.type === "custom" && tool.name === "lookup_active_employee",
-    );
-
-    if (!lookupTool || lookupTool.type !== "custom") {
-      throw new Error("Named employee lookup tool was not built.");
-    }
-
-    expect(lookupTool.response_variables).toMatchObject({
-      employee_display_name: "data.employee_name",
-      employee_transfer_target: "data.transfer_destination",
+    expect(agent.response_engine).toMatchObject({
+      type: "conversation-flow",
+      conversation_flow_id: "conversation_flow_test",
+      version: 0,
     });
-
-    const confirmationBranch = build?.config.nodes.find(
-      (node) => node.type === "branch" && node.id === "L_Transfer_Confirmation",
-    );
-
-    if (!confirmationBranch || confirmationBranch.type !== "branch") {
-      throw new Error("Named employee transfer branch was not built.");
-    }
-
-    const condition = confirmationBranch.edges?.[0]?.transition_condition;
-
-    expect(condition).toMatchObject({
-      type: "equation",
-      operator: "&&",
-      equations: [
-        {
-          left: "{{transfer_confirmed}}",
-          operator: "==",
-          right: "true",
-        },
-        {
-          left: "{{call_type}}",
-          operator: "==",
-          right: "phone_call",
-        },
-      ],
-    });
+    expect(agent.data_storage_setting).toBe("everything");
   });
 });
-
-function readDestinations(node: unknown): string[] {
-  const value = node as {
-    edges?: Array<{ destination_node_id?: string }>;
-    edge?: { destination_node_id?: string };
-    else_edge?: { destination_node_id?: string };
-    always_edge?: { destination_node_id?: string };
-  };
-
-  return [
-    ...(value.edges ?? []).map((edge) => edge.destination_node_id),
-    value.edge?.destination_node_id,
-    value.else_edge?.destination_node_id,
-    value.always_edge?.destination_node_id,
-  ].filter((destination): destination is string => Boolean(destination));
-}

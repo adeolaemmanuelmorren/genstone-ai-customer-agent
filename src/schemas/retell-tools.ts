@@ -70,13 +70,15 @@ export const orderLookupSchema = z.object({
   call_id: callId,
   identifier_type: z.enum(["caller_phone", "alternate_phone", "order_number"]),
   identifier: shortText,
+  previous_order_candidate_token: optionalDynamic(
+    z.string().trim().min(1).max(200),
+  ),
 });
 
 export const verifiedOrderSchema = z.object({
   call_id: callId,
   order_candidate_token: z.string().trim().min(1).max(200),
   order_items_confirmed: dynamicBoolean,
-  order_email_confirmed: dynamicBoolean,
   order_verified: dynamicBoolean,
 });
 
@@ -90,6 +92,7 @@ export const callbackScheduleSchema = z.object({
   callback_date: z.iso.date(),
   callback_time: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d$/u),
   callback_phone: phone,
+  customer_email: email,
   callback_confirmed: confirmedDynamicBoolean,
   communication_preference: optionalDynamic(z.string().trim().max(200)),
   urgency_context: optionalDynamic(z.string().trim().max(1000)),
@@ -101,15 +104,15 @@ export const prospectFollowUpSchema = z.object({
   primary_route: newProjectRoute,
   customer_name: shortText,
   confirmed_phone: phone,
-  customer_email: optionalDynamic(email),
+  customer_email: email,
   project_summary: summary,
   postal_code: optionalDynamic(z.string().trim().max(30)),
-  prospect_confirmed: confirmedDynamicBoolean,
-});
+}).strict();
 
 export const shipmentEmailSchema = verifiedOrderSchema.extend({
   idempotency_key: idempotencyKey,
   shipment_email_requested: confirmedDynamicBoolean,
+  shipment_email: email,
 });
 
 export const supportCaseCreateSchema = z.object({
@@ -118,30 +121,16 @@ export const supportCaseCreateSchema = z.object({
   primary_route: existingOrderRoute,
   order_candidate_token: optionalDynamic(z.string().trim().min(1).max(200)),
   order_items_confirmed: optionalDynamic(dynamicBoolean),
-  order_email_confirmed: optionalDynamic(dynamicBoolean),
   order_verified: optionalDynamic(dynamicBoolean),
   customer_name: shortText,
   confirmed_phone: phone,
-  customer_email: optionalDynamic(email),
+  customer_email: email,
   caller_type: callerTypeSchema,
   caller_country: optionalDynamic(callerCountrySchema),
   support_summary: summary,
-  support_summary_confirmed: confirmedDynamicBoolean,
   communication_preference: optionalDynamic(z.string().trim().max(200)),
   urgency_context: optionalDynamic(z.string().trim().max(1000)),
-  photo_context: optionalDynamic(z.string().trim().max(1000)),
-}).superRefine((value, context) => {
-  if (
-    value.order_candidate_token
-    && (!value.order_items_confirmed || !value.order_email_confirmed || !value.order_verified)
-  ) {
-    context.addIssue({
-      code: "custom",
-      path: ["order_verified"],
-      message: "Order context requires both confirmations and order_verified=true.",
-    });
-  }
-});
+}).strict();
 
 export const dncSuppressSchema = z.object({
   call_id: callId,

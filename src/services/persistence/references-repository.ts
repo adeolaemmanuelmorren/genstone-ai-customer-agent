@@ -16,7 +16,6 @@ export interface OrderReference {
   orderNumber: string;
   orderEmail?: string;
   orderPhone?: string;
-  maskedEmail?: string;
   items: Array<{ name: string; quantity: number }>;
 }
 
@@ -105,10 +104,9 @@ export async function storeOrderReference(
         order_number,
         order_email,
         order_phone,
-        masked_email,
         caller_safe_items,
         expires_at
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
     `,
     [
       token,
@@ -118,7 +116,6 @@ export async function storeOrderReference(
       input.orderNumber,
       input.orderEmail ?? null,
       input.orderPhone ?? null,
-      input.maskedEmail ?? null,
       JSON.stringify(input.items),
       new Date(Date.now() + TOKEN_LIFETIME_MS),
     ],
@@ -130,7 +127,6 @@ export async function storeOrderReference(
     orderNumber: input.orderNumber,
     orderEmail: input.orderEmail,
     orderPhone: input.orderPhone,
-    maskedEmail: input.maskedEmail,
     items: input.items,
   };
 }
@@ -147,12 +143,11 @@ export async function getOrderReference(
     order_number: string;
     order_email: string | null;
     order_phone: string | null;
-    masked_email: string | null;
     caller_safe_items: Array<{ name: string; quantity: number }>;
   }>(
     `
       select token, woo_order_id, order_number, order_email, order_phone,
-             masked_email, caller_safe_items
+             caller_safe_items
       from genstone_customer_agent.order_candidates
       where company_id = $1
         and call_id = $2
@@ -172,7 +167,6 @@ export async function getOrderReference(
     orderNumber: row.order_number,
     orderEmail: row.order_email ?? undefined,
     orderPhone: row.order_phone ?? undefined,
-    maskedEmail: row.masked_email ?? undefined,
     items: row.caller_safe_items,
   };
 }

@@ -23,7 +23,7 @@ function readTopic(fileName) {
     lines.shift();
   }
 
-  if (lines[0]?.startsWith("> Draft pending")) {
+  if (lines[0]?.startsWith("> ")) {
     lines.shift();
   }
 
@@ -36,11 +36,9 @@ function readTopic(fileName) {
 
 const sections = TOPIC_FILES.map((fileName) => readTopic(fileName));
 const draft = [
-  "# GenStone Knowledge Draft",
+  "# GenStone Knowledge Base V1",
   "",
-  "> **Draft pending business-owner approval.** Do not treat this document as an approved production knowledge base. Conflicts remain documented in `conflicts-and-open-questions.md`.",
-  "",
-  "> Source status: GenStone website and call-transcript reviews are complete. Zendesk tickets have not yet been merged.",
+  "> **V1 candidate pending business-owner approval.** This document includes supported caller-facing facts only.",
   "",
   ...sections.flatMap((section) => [section, ""]),
 ].join("\n");

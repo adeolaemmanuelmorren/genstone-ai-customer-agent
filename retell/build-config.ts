@@ -1,5 +1,6 @@
 import type { ConversationFlowCreateParams } from "retell-sdk/resources/conversation-flow";
 import type { ConversationFlowComponentCreateParams } from "retell-sdk/resources/conversation-flow-component";
+import type { AgentCreateParams } from "retell-sdk/resources/agent";
 
 type FlowNode = ConversationFlowCreateParams["nodes"][number];
 type FlowExtractVariable = Extract<
@@ -12,8 +13,8 @@ type ComponentTool = NonNullable<Component["tools"]>[number];
 
 const WORKER_BASE_URL = "https://genstone-ai-customer-agent.travis-m.workers.dev";
 const KNOWLEDGE_BASE_ID = "knowledge_base_032c34629284ba5d";
-const SHARED_COMPONENT_RELEASE = "v5";
-const FLOW_RELEASE = "genstone_customer_agent_v5";
+const SHARED_COMPONENT_RELEASE = "v49";
+const FLOW_RELEASE = "genstone_customer_agent_v49";
 
 export const RETELL_SHARED_COMPONENT_NAMES = {
   "Contact Lookup": `GenStone — Contact Lookup — ${SHARED_COMPONENT_RELEASE}`,
@@ -45,8 +46,6 @@ const defaultDynamicVariables = Object.fromEntries(
   STATUS_VARIABLES.map((name) => [name, "not_run"]),
 );
 
-defaultDynamicVariables.call_outcome = "not_run";
-
 type BuildConfigInput = {
   sharedComponentIds: RetellSharedComponentIds;
 };
@@ -63,6 +62,8 @@ type ToolInput = {
   required: string[];
   responseVariables: Record<string, string>;
   workerApiKey: string;
+  speakDuringExecution?: boolean;
+  executionMessage?: string;
 };
 
 function prompt(text: string) {
@@ -202,23 +203,13 @@ function conversationNode(input: {
   } as FlowNode;
 }
 
-function extractNode(input: {
-  id: string;
-  variables: FlowExtractVariable[];
-  destinationNodeId: string;
-}): FlowNode {
-  return {
-    id: input.id,
-    name: input.id,
-    type: "extract_dynamic_variables",
-    variables: input.variables,
-    edges: [alwaysEdge(`${input.id}_always`, input.destinationNodeId)],
-  } as FlowNode;
-}
-
 function branchNode(input: {
   id: string;
-  edges: Array<ReturnType<typeof equationEdge> | ReturnType<typeof compoundEquationEdge>>;
+  edges: Array<
+    | ReturnType<typeof promptEdge>
+    | ReturnType<typeof equationEdge>
+    | ReturnType<typeof compoundEquationEdge>
+  >;
   elseDestination: string;
 }): FlowNode {
   return {
@@ -245,13 +236,29 @@ function componentNode(
   } as FlowNode;
 }
 
-function endNode(id: string): FlowNode {
+function endNode(
+  id: string,
+  options: {
+    sayGoodbye?: boolean;
+    globalNodeSetting?: Record<string, unknown>;
+  } = {},
+): FlowNode {
   return {
     id,
     name: id,
     type: "end",
-    speak_during_execution: false,
-  };
+    speak_during_execution: options.sayGoodbye ?? false,
+    ...(options.sayGoodbye
+      ? {
+          execution_message_type: "static_text",
+          execution_message_description:
+            "Thank you for calling GenStone. Have a great day. Goodbye.",
+        }
+      : {}),
+    ...(options.globalNodeSetting
+      ? { global_node_setting: options.globalNodeSetting }
+      : {}),
+  } as FlowNode;
 }
 
 function dynamicString(variableName: string, description: string) {
@@ -289,55 +296,53 @@ function customTool(input: ToolInput): ComponentTool {
       required: input.required,
     },
     response_variables: input.responseVariables,
-    speak_during_execution: true,
+    speak_during_execution: input.speakDuringExecution ?? true,
     speak_after_execution: false,
     execution_message_type: "static_text",
-    execution_message_description: "One moment while I check that.",
-    timeout_ms: 15_000,
+    execution_message_description:
+      input.executionMessage ?? "One moment while I check that.",
+    timeout_ms: 30_000,
   } as ComponentTool;
 }
 
-function componentConversation(input: {
+function componentSubagent(input: {
   id: string;
   instruction: string;
-  alwaysDestination?: string;
-  edges?: Array<ReturnType<typeof promptEdge>>;
-  elseDestination?: string;
+  toolNames: string[];
+  captureVariables?: FlowExtractVariable[];
+  ownedTools?: unknown[];
+  finetuneConversationExamples?: unknown[];
+  finetuneTransitionExamples?: unknown[];
+  edges: Array<
+    | ReturnType<typeof promptEdge>
+    | ReturnType<typeof equationEdge>
+    | ReturnType<typeof compoundEquationEdge>
+  >;
 }): ComponentNode {
-  return conversationNode(input) as ComponentNode;
-}
+  const captureTool = input.captureVariables?.length
+    ? [{
+        type: "extract_dynamic_variable" as const,
+        name: `capture_${input.id.toLowerCase()}`,
+        description:
+          "Capture caller-provided facts only when the subagent instruction requires them. Update facts when the caller corrects them.",
+        variables: input.captureVariables,
+      }]
+    : [];
 
-function componentExtract(input: {
-  id: string;
-  variables: FlowExtractVariable[];
-  destinationNodeId: string;
-}): ComponentNode {
-  return extractNode(input) as ComponentNode;
-}
-
-function componentBranch(input: {
-  id: string;
-  edges: Array<ReturnType<typeof equationEdge>>;
-  elseDestination: string;
-}): ComponentNode {
-  return branchNode(input) as ComponentNode;
-}
-
-function componentFunction(
-  id: string,
-  toolName: string,
-  destinationNodeId: string,
-  speakDuringExecution = true,
-): ComponentNode {
   return {
-    id,
-    name: id,
-    type: "function",
-    tool_id: `tool_${toolName}`,
-    tool_type: "local",
-    wait_for_result: true,
-    speak_during_execution: speakDuringExecution,
-    edges: [alwaysEdge(`${id}_always`, destinationNodeId)],
+    id: input.id,
+    name: input.id,
+    type: "subagent",
+    instruction: prompt(input.instruction),
+    tool_ids: input.toolNames.map((name) => `tool_${name}`),
+    tools: [...captureTool, ...(input.ownedTools ?? [])],
+    edges: input.edges,
+    ...(input.finetuneConversationExamples
+      ? { finetune_conversation_examples: input.finetuneConversationExamples }
+      : {}),
+    ...(input.finetuneTransitionExamples
+      ? { finetune_transition_examples: input.finetuneTransitionExamples }
+      : {}),
   } as ComponentNode;
 }
 
@@ -346,17 +351,33 @@ function componentExit(id: string): ComponentNode {
 }
 
 function createContactLookupComponent(workerApiKey: string): Component {
-  const tool = customTool({
+  const phoneTool = customTool({
     name: "lookup_contact",
     route: "/v1/retell/tools/contacts/lookup",
-    description: "Look up a confirmed caller phone or email in Salesforce.",
+    description: "Look up a caller-confirmed phone in Salesforce.",
     workerApiKey,
+    speakDuringExecution: false,
     properties: {
       call_id: dynamicString("call_id", "Retell call reference."),
       phone: dynamicString("confirmed_phone", "Caller-confirmed phone number."),
-      email: dynamicString("caller_email", "Optional caller-confirmed email."),
     },
     required: ["call_id", "phone"],
+    responseVariables: {
+      contact_lookup_status: "result_code",
+      contact_token: "data.contact_token",
+    },
+  });
+  const emailTool = customTool({
+    name: "lookup_contact_by_email",
+    route: "/v1/retell/tools/contacts/lookup",
+    description: "Look up a caller-confirmed email in Salesforce after phone lookup does not find a unique contact.",
+    workerApiKey,
+    speakDuringExecution: false,
+    properties: {
+      call_id: dynamicString("call_id", "Retell call reference."),
+      email: dynamicString("caller_email", "Caller-confirmed email address."),
+    },
+    required: ["call_id", "email"],
     responseVariables: {
       contact_lookup_status: "result_code",
       contact_token: "data.contact_token",
@@ -366,22 +387,19 @@ function createContactLookupComponent(workerApiKey: string): Component {
   return {
     name: "Contact Lookup",
     flex_mode: false,
-    start_node_id: "C_Confirm_Caller_Number",
-    tools: [tool],
+    start_node_id: "S_Confirm_Contact",
+    tools: [phoneTool, emailTool],
     nodes: [
-      componentConversation({
-        id: "C_Confirm_Caller_Number",
+      componentSubagent({
+        id: "S_Confirm_Contact",
         instruction:
-          "Collect the caller's name. Offer {{user_number}} as the lookup number and confirm it or collect one replacement. Collect email only when useful.",
-        alwaysDestination: "X_Contact_Details",
-      }),
-      componentExtract({
-        id: "X_Contact_Details",
-        variables: [
+          "Reuse confirmed_phone when it is already known. Otherwise, ask whether the phone ending in the last four digits of {{user_number}} is the best callback number, saying only those four digits. If it is wrong, collect one replacement without reading it back. Call lookup_contact once. Never announce the contact-lookup result. If it finds a unique contact and caller_email is not confirmed, ask which email the team should use for follow-up and confirm the complete address once. If the phone lookup returns not_found or ambiguous, ask for the email used with GenStone, confirm the complete address once, and call lookup_contact_by_email once. After the required email is confirmed, finish without describing the internal lookup. Do not request another identifier after a technical error.",
+        toolNames: ["lookup_contact", "lookup_contact_by_email"],
+        captureVariables: [
           {
             name: "confirmed_phone",
             type: "string",
-            description: "The phone number the caller confirmed for lookup.",
+            description: "The phone explicitly confirmed or supplied by the caller.",
             required: true,
           },
           {
@@ -393,39 +411,15 @@ function createContactLookupComponent(workerApiKey: string): Component {
           {
             name: "caller_email",
             type: "string",
-            description: "The caller-confirmed email, when supplied.",
+            description: "The complete email explicitly confirmed by the caller.",
           },
         ],
-        destinationNodeId: "C_Read_Back_Contact",
-      }),
-      componentConversation({
-        id: "C_Read_Back_Contact",
-        instruction:
-          "Read back only the minimum lookup fields. A correction returns to collection; a confirmation continues.",
-        edges: [
-          promptEdge(
-            "C_Read_Back_Contact_correct",
-            "F_Lookup_Contact",
-            "The caller confirms the lookup details are correct.",
-          ),
-        ],
-        elseDestination: "C_Confirm_Caller_Number",
-      }),
-      componentFunction(
-        "F_Lookup_Contact",
-        "lookup_contact",
-        "L_Contact_Result",
-      ),
-      componentBranch({
-        id: "L_Contact_Result",
         edges: [
           equationEdge("contact_found", "E_Contact_Lookup", "contact_lookup_status", "==", "found"),
-          equationEdge("contact_not_found", "E_Contact_Lookup", "contact_lookup_status", "==", "not_found"),
-          equationEdge("contact_ambiguous", "E_Contact_Lookup", "contact_lookup_status", "==", "ambiguous"),
-          equationEdge("contact_validation", "E_Contact_Lookup", "contact_lookup_status", "==", "validation_failed"),
           equationEdge("contact_error", "E_Contact_Lookup", "contact_lookup_status", "==", "error"),
+          equationEdge("contact_invalid", "E_Contact_Lookup", "contact_lookup_status", "==", "validation_failed"),
+          promptEdge("contact_lookup_complete", "E_Contact_Lookup", "The permitted email lookup finished without a unique contact, or the caller declined to provide an email after the phone lookup did not find a unique contact."),
         ],
-        elseDestination: "E_Contact_Lookup",
       }),
       componentExit("E_Contact_Lookup"),
     ],
@@ -433,22 +427,95 @@ function createContactLookupComponent(workerApiKey: string): Component {
 }
 
 function createOrderVerificationComponent(workerApiKey: string): Component {
-  const tool = customTool({
+  const primaryTool = customTool({
     name: "lookup_order",
     route: "/v1/retell/tools/orders/lookup",
-    description: "Find one WooCommerce order candidate using a confirmed identifier.",
+    description: "Find one order candidate using the confirmed order phone.",
     workerApiKey,
+    speakDuringExecution: false,
     properties: {
       call_id: dynamicString("call_id", "Retell call reference."),
-      identifier_type: dynamicString("order_identifier_type", "Approved identifier type."),
-      identifier: dynamicString("order_identifier", "Caller-confirmed lookup value."),
+      identifier_type: {
+        type: "string",
+        description: "Primary lookup uses the confirmed order phone.",
+        const: "caller_phone",
+      },
+      identifier: {
+        type: "string",
+        description: "The order phone explicitly confirmed or supplied by the caller.",
+      },
     },
     required: ["call_id", "identifier_type", "identifier"],
     responseVariables: {
       order_lookup_status: "result_code",
       order_candidate_token: "data.order_candidate_token",
+      order_type_summary: "data.order_type_summary",
       order_item_summary: "data.order_item_summary",
-      order_email_masked: "data.order_email_masked",
+      order_status_summary: "data.order_status_summary",
+    },
+  });
+
+  const alternateTool = customTool({
+    name: "lookup_order_alternate",
+    route: "/v1/retell/tools/orders/lookup",
+    description: "Make the one permitted alternate order lookup.",
+    workerApiKey,
+    speakDuringExecution: false,
+    properties: {
+      call_id: dynamicString("call_id", "Retell call reference."),
+      identifier_type: {
+        type: "string",
+        enum: ["alternate_phone", "order_number"],
+        description: "Whether the caller supplied another order phone or the GenStone order number.",
+      },
+      identifier: {
+        type: "string",
+        description: "The alternate phone or GenStone order number supplied by the caller.",
+      },
+    },
+    required: ["call_id", "identifier_type", "identifier"],
+    responseVariables: {
+      order_lookup_status: "result_code",
+      order_candidate_token: "data.order_candidate_token",
+      order_type_summary: "data.order_type_summary",
+      order_item_summary: "data.order_item_summary",
+      order_status_summary: "data.order_status_summary",
+    },
+  });
+
+  const nextOrderTool = customTool({
+    name: "lookup_next_order",
+    route: "/v1/retell/tools/orders/lookup",
+    description: "Find the next recent non-quote order for the confirmed phone after the caller rejects a candidate.",
+    workerApiKey,
+    speakDuringExecution: false,
+    properties: {
+      call_id: dynamicString("call_id", "Retell call reference."),
+      identifier_type: {
+        type: "string",
+        description: "Next-order lookup uses the confirmed order phone.",
+        const: "caller_phone",
+      },
+      identifier: {
+        type: "string",
+        description: "The order phone explicitly confirmed or supplied by the caller.",
+      },
+      previous_order_candidate_token: dynamicString(
+        "order_candidate_token",
+        "The candidate the caller rejected.",
+      ),
+    },
+    required: [
+      "call_id",
+      "identifier_type",
+      "identifier",
+      "previous_order_candidate_token",
+    ],
+    responseVariables: {
+      order_lookup_status: "result_code",
+      order_candidate_token: "data.order_candidate_token",
+      order_type_summary: "data.order_type_summary",
+      order_item_summary: "data.order_item_summary",
       order_status_summary: "data.order_status_summary",
     },
   });
@@ -456,125 +523,53 @@ function createOrderVerificationComponent(workerApiKey: string): Component {
   return {
     name: "Order Verification",
     flex_mode: false,
-    start_node_id: "X_Caller_Phone_Order_Identifier",
-    tools: [tool],
+    start_node_id: "S_Order_Verification",
+    tools: [primaryTool, alternateTool, nextOrderTool],
     nodes: [
-      componentExtract({
-        id: "X_Caller_Phone_Order_Identifier",
-        variables: [
-          {
-            name: "order_identifier_type",
-            type: "enum",
-            choices: ["caller_phone"],
-            description: "Use caller_phone for the first lookup.",
-            required: true,
-          },
-          {
-            name: "order_identifier",
-            type: "string",
-            description: "Use the caller-confirmed phone number for the first lookup.",
-            required: true,
-          },
-        ],
-        destinationNodeId: "F_Lookup_Order_By_Phone",
-      }),
-      componentFunction(
-        "F_Lookup_Order_By_Phone",
-        "lookup_order",
-        "L_First_Order_Lookup",
-      ),
-      componentBranch({
-        id: "L_First_Order_Lookup",
-        edges: [
-          equationEdge("first_order_found", "C_Confirm_Order_Candidate", "order_lookup_status", "==", "found"),
-        ],
-        elseDestination: "C_Collect_Alternate_Order_Identifier",
-      }),
-      componentConversation({
-        id: "C_Collect_Alternate_Order_Identifier",
+      componentSubagent({
+        id: "S_Order_Verification",
         instruction:
-          "Ask for either a different phone number or a numeric WooCommerce order number, not both. Retailer, store, PO, and CPO values are context only.",
-        alwaysDestination: "X_Alternate_Order_Identifier",
-      }),
-      componentExtract({
-        id: "X_Alternate_Order_Identifier",
-        variables: [
+          "If confirmed_phone is not known, ask whether the phone ending in the last four digits of {{user_number}} is correct for the order. Say only the last four digits. If it is wrong, collect one replacement without reading it back. Then say: Thank you. Just give me a moment to look up your order. Call lookup_order. Present the returned order type and items once and ask whether they match. If they do, capture order_items_confirmed=true and order_verified=true, then say only: Great. What can I help you with? Wait for the caller's answer. Do not announce or repeat that the order was verified. If the first candidate is rejected, ask once for the GenStone order number. Use lookup_order_alternate when the caller supplies an order number or different order phone. If they do not have the order number, capture order_number_unavailable=true and use lookup_next_order. Continue with lookup_next_order for later rejected candidates without asking for the order number again. Finish unresolved when no candidate is confirmed. Do not reveal order details beyond the candidate type and items before confirmation.",
+        toolNames: ["lookup_order", "lookup_order_alternate", "lookup_next_order"],
+        captureVariables: [
+          {
+            name: "confirmed_phone",
+            type: "string",
+            description: "The phone explicitly confirmed or supplied for the order.",
+            required: true,
+          },
           {
             name: "order_identifier_type",
             type: "enum",
             choices: ["alternate_phone", "order_number"],
-            description: "The one alternate identifier type supplied by the caller.",
-            required: true,
+            description: "The alternate identifier type supplied by the caller.",
           },
           {
             name: "order_identifier",
             type: "string",
-            description: "The one caller-supplied alternate lookup value.",
-            required: true,
+            description: "The alternate phone or order number supplied by the caller.",
           },
-        ],
-        destinationNodeId: "F_Lookup_Order_By_Alternate",
-      }),
-      componentFunction(
-        "F_Lookup_Order_By_Alternate",
-        "lookup_order",
-        "L_Second_Order_Lookup",
-      ),
-      componentBranch({
-        id: "L_Second_Order_Lookup",
-        edges: [
-          equationEdge("second_order_found", "C_Confirm_Order_Candidate", "order_lookup_status", "==", "found"),
-        ],
-        elseDestination: "X_Order_Unverified",
-      }),
-      componentConversation({
-        id: "C_Confirm_Order_Candidate",
-        instruction:
-          "State only {{order_item_summary}} and ask the caller to confirm it. Then ask them to confirm the masked email hint {{order_email_masked}}. Never state a full email or order status here.",
-        alwaysDestination: "X_Order_Confirmation",
-      }),
-      componentExtract({
-        id: "X_Order_Confirmation",
-        variables: [
+          {
+            name: "order_number_unavailable",
+            type: "boolean",
+            description: "True only after the caller explicitly says they do not have the order number.",
+          },
           {
             name: "order_items_confirmed",
             type: "boolean",
-            description: "True only when the caller confirms the candidate order items.",
-            required: true,
-          },
-          {
-            name: "order_email_confirmed",
-            type: "boolean",
-            description: "True only when the caller confirms the masked order email hint.",
-            required: true,
+            description: "True only when the caller confirms the current candidate items.",
           },
           {
             name: "order_verified",
             type: "boolean",
-            description: "True only when both order confirmations are true.",
-            required: true,
+            description: "True only when the caller confirms the current candidate items.",
           },
         ],
-        destinationNodeId: "L_Order_Confirmation",
-      }),
-      componentBranch({
-        id: "L_Order_Confirmation",
         edges: [
-          equationEdge("order_confirmed", "E_Order_Verification", "order_verified", "==", "true"),
+          equationEdge("order_verified", "E_Order_Verification", "order_verified", "==", "true"),
+          equationEdge("order_lookup_error", "E_Order_Verification", "order_lookup_status", "==", "error"),
+          promptEdge("order_verification_unresolved", "E_Order_Verification", "The permitted order search is exhausted: the alternate lookup did not produce a confirmed candidate, or lookup_next_order reported no more candidates."),
         ],
-        elseDestination: "X_Order_Unverified",
-      }),
-      componentExtract({
-        id: "X_Order_Unverified",
-        variables: [
-          {
-            name: "order_verified",
-            type: "boolean",
-            description: "Set false because order verification did not complete.",
-            required: true,
-          },
-        ],
-        destinationNodeId: "E_Order_Verification",
       }),
       componentExit("E_Order_Verification"),
     ],
@@ -587,6 +582,7 @@ function createProspectFollowupComponent(workerApiKey: string): Component {
     route: "/v1/retell/tools/prospects/follow-up",
     description: "Send a confirmed unmatched prospect request to the GenStone team.",
     workerApiKey,
+    speakDuringExecution: false,
     properties: {
       call_id: dynamicString("call_id", "Retell call reference."),
       idempotency_key: {
@@ -601,10 +597,9 @@ function createProspectFollowupComponent(workerApiKey: string): Component {
       },
       customer_name: dynamicString("caller_name", "Caller-confirmed name."),
       confirmed_phone: dynamicString("confirmed_phone", "Caller-confirmed phone."),
-      customer_email: dynamicString("caller_email", "Optional caller-confirmed email."),
+      customer_email: dynamicString("caller_email", "Caller-confirmed email."),
       project_summary: dynamicString("project_summary", "Caller-confirmed project summary."),
       postal_code: dynamicString("postal_code", "Optional project ZIP code."),
-      prospect_confirmed: dynamicBoolean("prospect_confirmed", "Explicit read-back confirmation."),
     },
     required: [
       "call_id",
@@ -612,8 +607,8 @@ function createProspectFollowupComponent(workerApiKey: string): Component {
       "primary_route",
       "customer_name",
       "confirmed_phone",
+      "customer_email",
       "project_summary",
-      "prospect_confirmed",
     ],
     responseVariables: {
       prospect_followup_status: "result_code",
@@ -623,22 +618,25 @@ function createProspectFollowupComponent(workerApiKey: string): Component {
   return {
     name: "Prospect Follow-Up",
     flex_mode: false,
-    start_node_id: "C_Collect_Project_Context",
+    start_node_id: "S_Prospect_Followup",
     tools: [tool],
     nodes: [
-      componentConversation({
-        id: "C_Collect_Project_Context",
+      componentSubagent({
+        id: "S_Prospect_Followup",
         instruction:
-          "Collect the minimum useful project summary and optional ZIP. Do not conduct a quote or create a CRM record.",
-        alwaysDestination: "X_Project_Context",
-      }),
-      componentExtract({
-        id: "X_Project_Context",
-        variables: [
+          "Use the caller's existing name, confirmed phone, and project context. If the follow-up reason is unclear, ask one concise question. If caller_email is not confirmed, ask for it and confirm the complete address once. Do not repeat the other contact details. Capture the minimum useful project summary and email, then call send_prospect_follow_up once. If it succeeds, say the information was sent to the team and state only the agreed next step. If it fails, apologize briefly without claiming success.",
+        toolNames: ["send_prospect_follow_up"],
+        captureVariables: [
           {
             name: "project_summary",
             type: "string",
             description: "Minimum useful caller-supplied new-project context.",
+            required: true,
+          },
+          {
+            name: "caller_email",
+            type: "string",
+            description: "Complete email explicitly confirmed by the caller.",
             required: true,
           },
           {
@@ -647,43 +645,13 @@ function createProspectFollowupComponent(workerApiKey: string): Component {
             description: "Optional caller-supplied ZIP code.",
           },
         ],
-        destinationNodeId: "C_Confirm_Project_Context",
-      }),
-      componentConversation({
-        id: "C_Confirm_Project_Context",
-        instruction: "Read back the caller's contact information and short project summary.",
-        alwaysDestination: "X_Prospect_Confirmation",
-      }),
-      componentExtract({
-        id: "X_Prospect_Confirmation",
-        variables: [
-          {
-            name: "prospect_confirmed",
-            type: "boolean",
-            description: "True only when the caller confirms the contact and project summary.",
-            required: true,
-          },
-        ],
-        destinationNodeId: "L_Prospect_Confirmation",
-      }),
-      componentBranch({
-        id: "L_Prospect_Confirmation",
-        edges: [
-          equationEdge("prospect_confirmed", "F_Send_Prospect_Followup", "prospect_confirmed", "==", "true"),
-        ],
-        elseDestination: "E_Prospect_Followup",
-      }),
-      componentFunction(
-        "F_Send_Prospect_Followup",
-        "send_prospect_follow_up",
-        "L_Prospect_Write_Result",
-      ),
-      componentBranch({
-        id: "L_Prospect_Write_Result",
         edges: [
           equationEdge("prospect_sent", "E_Prospect_Followup", "prospect_followup_status", "==", "sent"),
+          equationEdge("prospect_delivery_failed", "E_Prospect_Followup", "prospect_followup_status", "==", "delivery_failed"),
+          equationEdge("prospect_error", "E_Prospect_Followup", "prospect_followup_status", "==", "error"),
+          equationEdge("prospect_invalid", "E_Prospect_Followup", "prospect_followup_status", "==", "validation_failed"),
+          promptEdge("prospect_declined", "E_Prospect_Followup", "The caller declined or cancelled the follow-up before it was sent."),
         ],
-        elseDestination: "E_Prospect_Followup",
       }),
       componentExit("E_Prospect_Followup"),
     ],
@@ -696,18 +664,17 @@ function createShipmentComponent(workerApiKey: string): Component {
     route: "/v1/retell/tools/shipments/lookup",
     description: "Read stored shipment details for a fully verified order.",
     workerApiKey,
+    speakDuringExecution: false,
     properties: {
       call_id: dynamicString("call_id", "Retell call reference."),
       order_candidate_token: dynamicString("order_candidate_token", "Opaque verified order candidate."),
       order_items_confirmed: dynamicBoolean("order_items_confirmed", "Caller confirmed order items."),
-      order_email_confirmed: dynamicBoolean("order_email_confirmed", "Caller confirmed masked order email."),
-      order_verified: dynamicBoolean("order_verified", "Both verification checks passed."),
+      order_verified: dynamicBoolean("order_verified", "The caller confirmed the candidate order items."),
     },
     required: [
       "call_id",
       "order_candidate_token",
       "order_items_confirmed",
-      "order_email_confirmed",
       "order_verified",
     ],
     responseVariables: {
@@ -719,8 +686,9 @@ function createShipmentComponent(workerApiKey: string): Component {
   const emailTool = customTool({
     name: "email_shipment_tracking",
     route: "/v1/retell/tools/shipments/email",
-    description: "Email stored shipment details to the verified order email only.",
+    description: "Email stored shipment details to the caller-confirmed email.",
     workerApiKey,
+    speakDuringExecution: false,
     properties: {
       call_id: dynamicString("call_id", "Retell call reference."),
       idempotency_key: {
@@ -730,18 +698,18 @@ function createShipmentComponent(workerApiKey: string): Component {
       },
       order_candidate_token: dynamicString("order_candidate_token", "Opaque verified order candidate."),
       order_items_confirmed: dynamicBoolean("order_items_confirmed", "Caller confirmed order items."),
-      order_email_confirmed: dynamicBoolean("order_email_confirmed", "Caller confirmed masked order email."),
-      order_verified: dynamicBoolean("order_verified", "Both verification checks passed."),
+      order_verified: dynamicBoolean("order_verified", "The caller confirmed the candidate order items."),
       shipment_email_requested: dynamicBoolean("shipment_email_requested", "Caller requested or accepted shipment email."),
+      shipment_email: dynamicString("shipment_email", "Complete email address confirmed by the caller for this shipment message."),
     },
     required: [
       "call_id",
       "idempotency_key",
       "order_candidate_token",
       "order_items_confirmed",
-      "order_email_confirmed",
       "order_verified",
       "shipment_email_requested",
+      "shipment_email",
     ],
     responseVariables: {
       shipment_email_status: "result_code",
@@ -751,79 +719,43 @@ function createShipmentComponent(workerApiKey: string): Component {
   return {
     name: "Shipment",
     flex_mode: false,
-    start_node_id: "F_Lookup_Shipment",
+    start_node_id: "S_Shipment",
     tools: [lookupTool, emailTool],
     nodes: [
-      componentFunction("F_Lookup_Shipment", "lookup_shipment", "L_Shipment_Lookup"),
-      componentBranch({
-        id: "L_Shipment_Lookup",
-        edges: [
-          equationEdge("shipment_found", "C_Shipment_Answer_And_Email_Offer", "shipment_lookup_status", "==", "found"),
-          equationEdge("shipment_missing", "E_Shipment", "shipment_lookup_status", "==", "shipment_unavailable"),
-        ],
-        elseDestination: "E_Shipment",
-      }),
-      componentConversation({
-        id: "C_Shipment_Answer_And_Email_Offer",
+      componentSubagent({
+        id: "S_Shipment",
         instruction:
-          "Speak only {{shipment_safe_summary}}. Distinguish stored tracking information from an unavailable live ETA. Offer to email the details.",
-        alwaysDestination: "X_Shipment_Email_Request",
-      }),
-      componentExtract({
-        id: "X_Shipment_Email_Request",
-        variables: [
+          "Call lookup_shipment once. If details are found, speak {{shipment_safe_summary}} without reading a tracking number aloud, then offer to email the complete tracking details. If the caller accepts, ask which email address to use and confirm that destination once. Set shipment_email_requested to the caller's choice and call email_shipment_tracking once after the destination is confirmed. If shipment_lookup_status is shipment_unavailable, speak {{shipment_safe_summary}} and do not ask what happened, create support follow-up, or offer an email.",
+        toolNames: ["lookup_shipment", "email_shipment_tracking"],
+        captureVariables: [
           {
             name: "shipment_email_requested",
             type: "boolean",
-            description: "True only if the caller asks for or accepts shipment email.",
-            required: true,
+            description:
+              "True only when the caller accepts shipment email and confirms its destination.",
           },
-        ],
-        destinationNodeId: "L_Shipment_Email_Request",
-      }),
-      componentBranch({
-        id: "L_Shipment_Email_Request",
-        edges: [
-          equationEdge("email_requested", "C_Confirm_Order_Email_For_Shipment", "shipment_email_requested", "==", "true"),
-        ],
-        elseDestination: "E_Shipment",
-      }),
-      componentConversation({
-        id: "C_Confirm_Order_Email_For_Shipment",
-        instruction:
-          "Confirm the masked order email {{order_email_masked}}. Do not accept an alternate recipient.",
-        alwaysDestination: "X_Shipment_Email_Confirmation",
-      }),
-      componentExtract({
-        id: "X_Shipment_Email_Confirmation",
-        variables: [
           {
-            name: "order_email_confirmed",
-            type: "boolean",
-            description: "True only when the caller reconfirms the masked order email.",
-            required: true,
+            name: "shipment_email",
+            type: "string",
+            description: "Complete shipment-email destination confirmed by the caller.",
           },
         ],
-        destinationNodeId: "L_Shipment_Email_Confirmation",
-      }),
-      componentBranch({
-        id: "L_Shipment_Email_Confirmation",
         edges: [
-          equationEdge("shipment_email_confirmed", "F_Email_Shipment_Tracking", "order_email_confirmed", "==", "true"),
-        ],
-        elseDestination: "E_Shipment",
-      }),
-      componentFunction(
-        "F_Email_Shipment_Tracking",
-        "email_shipment_tracking",
-        "L_Shipment_Email_Result",
-      ),
-      componentBranch({
-        id: "L_Shipment_Email_Result",
-        edges: [
+          compoundEquationEdge("shipment_answered_without_email", "E_Shipment", [
+            { variable: "shipment_lookup_status", operator: "==", value: "found" },
+            { variable: "shipment_email_requested", operator: "==", value: "false" },
+          ]),
           equationEdge("shipment_email_sent", "E_Shipment", "shipment_email_status", "==", "sent"),
+          equationEdge("shipment_email_failed", "E_Shipment", "shipment_email_status", "==", "delivery_failed"),
+          equationEdge("shipment_email_error", "E_Shipment", "shipment_email_status", "==", "error"),
+          equationEdge("shipment_unavailable", "E_Shipment", "shipment_lookup_status", "==", "shipment_unavailable"),
+          equationEdge("shipment_lookup_error", "E_Shipment", "shipment_lookup_status", "==", "error"),
+          promptEdge(
+            "shipment_email_declined",
+            "E_Shipment",
+            "Shipment details were spoken and the caller declined the email offer after shipment_email_requested was captured as false.",
+          ),
         ],
-        elseDestination: "E_Shipment",
       }),
       componentExit("E_Shipment"),
     ],
@@ -836,6 +768,7 @@ function createTrackedSupportComponent(workerApiKey: string): Component {
     route: "/v1/retell/tools/support/cases",
     description: "Create one private GenStone support ticket in Zendesk.",
     workerApiKey,
+    speakDuringExecution: false,
     properties: {
       call_id: dynamicString("call_id", "Retell call reference."),
       idempotency_key: {
@@ -850,18 +783,15 @@ function createTrackedSupportComponent(workerApiKey: string): Component {
       },
       order_candidate_token: dynamicString("order_candidate_token", "Optional opaque verified order reference."),
       order_items_confirmed: dynamicBoolean("order_items_confirmed", "Required when order context is supplied."),
-      order_email_confirmed: dynamicBoolean("order_email_confirmed", "Required when order context is supplied."),
       order_verified: dynamicBoolean("order_verified", "Required when order context is supplied."),
       customer_name: dynamicString("caller_name", "Caller-confirmed name when known."),
       confirmed_phone: dynamicString("confirmed_phone", "Caller-confirmed phone when known."),
-      customer_email: dynamicString("caller_email", "Caller-confirmed email when known."),
+      customer_email: dynamicString("caller_email", "Required caller-confirmed email for the Zendesk requester."),
       caller_type: dynamicString("caller_type", "Confirmed customer, contractor, distributor, retail partner, or other classification."),
       caller_country: dynamicString("caller_country", "Confirmed country when known."),
       support_summary: dynamicString("support_summary", "Caller-confirmed factual issue summary."),
-      support_summary_confirmed: dynamicBoolean("support_summary_confirmed", "Explicit factual-summary confirmation."),
       communication_preference: dynamicString("communication_preference", "Optional ordinary follow-up preference."),
       urgency_context: dynamicString("urgency_context", "Optional factual priority context without a promise."),
-      photo_context: dynamicString("photo_context", "Optional volunteered photo availability context."),
     },
     required: [
       "call_id",
@@ -869,9 +799,9 @@ function createTrackedSupportComponent(workerApiKey: string): Component {
       "primary_route",
       "customer_name",
       "confirmed_phone",
+      "customer_email",
       "caller_type",
       "support_summary",
-      "support_summary_confirmed",
     ],
     responseVariables: {
       case_write_status: "result_code",
@@ -881,99 +811,45 @@ function createTrackedSupportComponent(workerApiKey: string): Component {
   return {
     name: "Tracked Support",
     flex_mode: false,
-    start_node_id: "C_Collect_Support_Summary",
+    start_node_id: "S_Tracked_Support",
     tools: [writeTool],
     nodes: [
-      componentConversation({
-        id: "C_Collect_Support_Summary",
+      componentSubagent({
+        id: "S_Tracked_Support",
         instruction:
-          "Collect a short factual issue summary. Ensure caller name and confirmed phone are present. Identify whether the caller is the customer, a contractor, a distributor, a retail partner, or other; ask only when it is not already clear. Record country when known without guessing. Do not ask about photos by default. Preserve volunteered photo availability and communication preference as ordinary context.",
-        alwaysDestination: "X_Support_Summary",
-      }),
-      componentExtract({
-        id: "X_Support_Summary",
-        variables: [
-          {
-            name: "caller_name",
-            type: "string",
-            description: "Caller-confirmed name for Zendesk.",
-            required: true,
-          },
-          {
-            name: "confirmed_phone",
-            type: "string",
-            description: "Caller-confirmed phone for Zendesk.",
-            required: true,
-          },
+          "Use the issue the caller already described. If it is clear, acknowledge it briefly and do not ask for more details. Ask one open question only when the issue is unclear. For an unexplained damage report, say: I'm sorry to hear that. What was broken? When order_verified is not true, explain once that the correct order could not be confirmed and do not claim a shipping status or arrival date. Reuse the name, phone, and verified order information already provided; never repeat the order items. Use customer as caller_type unless the caller already identified another role. If caller_email is not confirmed, ask for the email and confirm the complete address once. Capture the factual issue summary and call create_support_case once. If it succeeds or only the internal notice fails, say: I'm letting our team know, and they'll be in touch as soon as possible. If the ticket write fails, apologize and do not claim follow-up was created.",
+        toolNames: ["create_support_case"],
+        captureVariables: [
           {
             name: "support_summary",
             type: "string",
-            description: "Short factual support issue summary.",
+            description: "Short factual summary of the existing-order issue already described.",
             required: true,
           },
           {
             name: "caller_type",
             type: "enum",
             choices: ["customer", "contractor", "distributor", "retail_partner", "other"],
-            description: "Confirmed caller classification for Zendesk sorting.",
+            description: "Use customer unless the caller already identified another role.",
             required: true,
           },
           {
-            name: "caller_country",
-            type: "enum",
-            choices: ["united_states", "canada", "other_country"],
-            description: "Confirmed country when known.",
-          },
-          {
-            name: "communication_preference",
+            name: "caller_email",
             type: "string",
-            description: "Optional caller-supplied follow-up preference.",
-          },
-          {
-            name: "photo_context",
-            type: "string",
-            description: "Optional volunteered photo availability, without an upload promise.",
-          },
-          {
-            name: "urgency_context",
-            type: "string",
-            description: "Optional factual urgency context, without a service promise.",
-          },
-        ],
-        destinationNodeId: "C_Confirm_Support_Summary",
-      }),
-      componentConversation({
-        id: "C_Confirm_Support_Summary",
-        instruction: "Read back the factual issue summary. Do not mention the internal ticket creation.",
-        alwaysDestination: "X_Support_Confirmation",
-      }),
-      componentExtract({
-        id: "X_Support_Confirmation",
-        variables: [
-          {
-            name: "support_summary_confirmed",
-            type: "boolean",
-            description: "True only after the caller confirms the factual support summary.",
+            description: "Complete email explicitly confirmed by the caller.",
             required: true,
           },
+          { name: "caller_country", type: "string", description: "Optional country already supplied by the caller." },
+          { name: "communication_preference", type: "string", description: "Optional follow-up preference volunteered by the caller." },
+          { name: "urgency_context", type: "string", description: "Optional factual urgency context volunteered by the caller." },
         ],
-        destinationNodeId: "L_Support_Confirmation",
-      }),
-      componentBranch({
-        id: "L_Support_Confirmation",
         edges: [
-          equationEdge("support_confirmed", "F_Create_Support_Case", "support_summary_confirmed", "==", "true"),
+          equationEdge("support_created", "E_Tracked_Support", "case_write_status", "==", "created"),
+          equationEdge("support_notice_failed", "E_Tracked_Support", "case_write_status", "==", "created_notice_failed"),
+          equationEdge("support_error", "E_Tracked_Support", "case_write_status", "==", "error"),
+          equationEdge("support_invalid", "E_Tracked_Support", "case_write_status", "==", "validation_failed"),
+          promptEdge("support_declined", "E_Tracked_Support", "The caller declined or cancelled customer-service follow-up before the ticket was created."),
         ],
-        elseDestination: "E_Tracked_Support",
-      }),
-      componentFunction("F_Create_Support_Case", "create_support_case", "L_Case_Write_Result"),
-      componentBranch({
-        id: "L_Case_Write_Result",
-        edges: [
-          equationEdge("case_created", "E_Tracked_Support", "case_write_status", "==", "created"),
-          equationEdge("notice_failed", "E_Tracked_Support", "case_write_status", "==", "created_notice_failed"),
-        ],
-        elseDestination: "E_Tracked_Support",
       }),
       componentExit("E_Tracked_Support"),
     ],
@@ -986,6 +862,7 @@ function createCallbackComponent(workerApiKey: string): Component {
     route: "/v1/retell/tools/callbacks/schedule",
     description: "Send a confirmed next-business-day-or-later callback request internally.",
     workerApiKey,
+    speakDuringExecution: false,
     properties: {
       call_id: dynamicString("call_id", "Retell call reference."),
       idempotency_key: {
@@ -1003,7 +880,8 @@ function createCallbackComponent(workerApiKey: string): Component {
       callback_summary: dynamicString("callback_summary", "Short factual callback summary."),
       callback_date: dynamicString("callback_date", "Caller-requested date in YYYY-MM-DD format."),
       callback_time: dynamicString("callback_time", "Mountain time in 24-hour HH:MM format."),
-      callback_phone: dynamicString("callback_phone", "Caller-confirmed callback phone."),
+      callback_phone: dynamicString("confirmed_phone", "The phone already confirmed for the callback."),
+      customer_email: dynamicString("caller_email", "Caller-confirmed email for the callback request."),
       callback_confirmed: dynamicBoolean("callback_confirmed", "Explicit read-back confirmation."),
       communication_preference: dynamicString("communication_preference", "Optional follow-up preference."),
       urgency_context: dynamicString("urgency_context", "Optional factual urgency context without a promise."),
@@ -1018,6 +896,7 @@ function createCallbackComponent(workerApiKey: string): Component {
       "callback_date",
       "callback_time",
       "callback_phone",
+      "customer_email",
       "callback_confirmed",
     ],
     responseVariables: {
@@ -1028,61 +907,37 @@ function createCallbackComponent(workerApiKey: string): Component {
   return {
     name: "Callback",
     flex_mode: false,
-    start_node_id: "C_Collect_Callback_Request",
+    start_node_id: "S_Callback",
     tools: [tool],
     nodes: [
-      componentConversation({
-        id: "C_Collect_Callback_Request",
+      componentSubagent({
+        id: "S_Callback",
         instruction:
-          "This component is only for a new project. Collect the caller's name if it is not already known. Propose a broad subject from the conversation and allow correction. Collect a preferred date, Mountain time, and callback phone. Use the current date in the agent's America/Denver timezone. Earliest is the next business day: if today is Monday, Tuesday is valid unless it is a U.S. federal holiday. Do not add an extra day. Use weekdays from 8:30 AM through 4:30 PM Mountain and exclude U.S. federal holidays.",
-        alwaysDestination: "X_Callback_Request",
-      }),
-      componentExtract({
-        id: "X_Callback_Request",
-        variables: [
+          "Use the caller's existing name and confirmed phone. Collect only the missing callback subject, date, Mountain time, and email, one question at a time. Callbacks are Monday through Friday from 8:30 AM through 4:30 PM Mountain, beginning the next business day and excluding U.S. federal holidays. Confirm the subject, date, Mountain time, confirmed number, and email once. After approval, capture callback_confirmed=true and call schedule_callback once. If it succeeds, say the callback request was scheduled and close without repeating the details. If it fails, apologize without claiming it was scheduled.",
+        toolNames: ["schedule_callback"],
+        captureVariables: [
           { name: "caller_name", type: "string", description: "Caller-confirmed name.", required: true },
           { name: "callback_subject", type: "string", description: "Broad caller-approved callback topic.", required: true },
           { name: "callback_summary", type: "string", description: "Short factual callback summary.", required: true },
           { name: "callback_date", type: "string", description: "Requested date normalized to YYYY-MM-DD.", required: true },
           { name: "callback_time", type: "string", description: "Requested Mountain time normalized to 24-hour HH:MM.", required: true },
-          { name: "callback_phone", type: "string", description: "Caller-confirmed callback phone.", required: true },
+          { name: "confirmed_phone", type: "string", description: "Previously confirmed callback phone.", required: true },
+          { name: "caller_email", type: "string", description: "Complete callback email explicitly confirmed by the caller.", required: true },
+          { name: "callback_confirmed", type: "boolean", description: "True only after the caller approves the complete callback details.", required: true },
           { name: "communication_preference", type: "string", description: "Optional ordinary follow-up preference." },
           { name: "urgency_context", type: "string", description: "Optional factual urgency context without a service promise." },
         ],
-        destinationNodeId: "C_Confirm_Callback_Request",
-      }),
-      componentConversation({
-        id: "C_Confirm_Callback_Request",
-        instruction:
-          "Read back the subject, date, Mountain time, and callback phone. Do not offer or promise a particular coordinator.",
-        alwaysDestination: "X_Callback_Confirmation",
-      }),
-      componentExtract({
-        id: "X_Callback_Confirmation",
-        variables: [
-          {
-            name: "callback_confirmed",
-            type: "boolean",
-            description: "True only after the caller confirms the complete read-back.",
-            required: true,
-          },
-        ],
-        destinationNodeId: "L_Callback_Confirmation",
-      }),
-      componentBranch({
-        id: "L_Callback_Confirmation",
-        edges: [
-          equationEdge("callback_confirmed", "F_Schedule_Callback", "callback_confirmed", "==", "true"),
-        ],
-        elseDestination: "E_Callback",
-      }),
-      componentFunction("F_Schedule_Callback", "schedule_callback", "L_Callback_Write_Result"),
-      componentBranch({
-        id: "L_Callback_Write_Result",
         edges: [
           equationEdge("callback_scheduled", "E_Callback", "callback_status", "==", "scheduled"),
+          equationEdge("callback_delivery_failed", "E_Callback", "callback_status", "==", "delivery_failed"),
+          equationEdge("callback_error", "E_Callback", "callback_status", "==", "error"),
+          equationEdge("callback_invalid", "E_Callback", "callback_status", "==", "validation_failed"),
+          promptEdge(
+            "callback_declined",
+            "E_Callback",
+            "The caller declined the proposed callback details.",
+          ),
         ],
-        elseDestination: "E_Callback",
       }),
       componentExit("E_Callback"),
     ],
@@ -1095,6 +950,7 @@ function createNamedEmployeeTransferComponent(workerApiKey: string): Component {
     route: "/v1/retell/tools/employees/lookup",
     description: "Resolve a caller-supplied employee name to one active Salesforce employee.",
     workerApiKey,
+    speakDuringExecution: false,
     properties: {
       call_id: dynamicString("call_id", "Retell call reference."),
       employee_name: dynamicString("requested_employee_name", "Employee name independently supplied by the caller."),
@@ -1110,119 +966,67 @@ function createNamedEmployeeTransferComponent(workerApiKey: string): Component {
   return {
     name: "Named Employee Transfer",
     flex_mode: false,
-    start_node_id: "X_Requested_Employee",
+    start_node_id: "S_Named_Employee_Transfer",
     tools: [tool],
     nodes: [
-      componentExtract({
-        id: "X_Requested_Employee",
-        variables: [
+      componentSubagent({
+        id: "S_Named_Employee_Transfer",
+        instruction:
+          "Capture the employee name the caller independently supplied and call lookup_active_employee once. If no unique active employee with a number is found, say the connection could not be completed and offer to continue helping. Never imply the employee declined. If the employee is found during a phone call, confirm {{employee_display_name}}, ask permission to connect, capture transfer_confirmed=true only after approval, and call transfer_named_employee. If this is not a phone call, explain that this channel cannot make a live connection and offer to continue helping. If transfer fails, say the connection could not be completed. Never speak the transfer destination.",
+        toolNames: ["lookup_active_employee"],
+        captureVariables: [
           {
             name: "requested_employee_name",
             type: "string",
-            description: "The employee name the caller independently supplied.",
+            description: "The employee name independently supplied by the caller.",
             required: true,
           },
-        ],
-        destinationNodeId: "F_Lookup_Active_Employee",
-      }),
-      componentFunction(
-        "F_Lookup_Active_Employee",
-        "lookup_active_employee",
-        "L_Employee_Result",
-        false,
-      ),
-      componentBranch({
-        id: "L_Employee_Result",
-        edges: [
-          equationEdge("employee_found", "L_Employee_Channel", "employee_lookup_status", "==", "found"),
-        ],
-        elseDestination: "E_Named_Employee_Transfer",
-      }),
-      componentBranch({
-        id: "L_Employee_Channel",
-        edges: [
-          equationEdge(
-            "employee_found_phone_call",
-            "C_Confirm_Named_Transfer",
-            "call_type",
-            "==",
-            "phone_call",
-          ),
-        ],
-        elseDestination: "C_Web_Call_Transfer_Fallback",
-      }),
-      componentConversation({
-        id: "C_Web_Call_Transfer_Fallback",
-        instruction:
-          "Explain that this call channel cannot make a live connection, so you will use the normal follow-up path. Do not say a transfer was attempted, promise a transfer, or imply the employee is unavailable.",
-        alwaysDestination: "E_Named_Employee_Transfer",
-      }),
-      componentConversation({
-        id: "C_Confirm_Named_Transfer",
-        instruction:
-          "Confirm the matched name {{employee_display_name}} and ask whether to transfer. Do not say the employee is available and never speak the transfer target.",
-        alwaysDestination: "X_Transfer_Confirmation",
-      }),
-      componentExtract({
-        id: "X_Transfer_Confirmation",
-        variables: [
           {
             name: "transfer_confirmed",
             type: "boolean",
-            description: "True only when the caller confirms the named transfer.",
-            required: true,
+            description: "True only when the caller confirms the matched named transfer.",
           },
         ],
-        destinationNodeId: "L_Transfer_Confirmation",
-      }),
-      componentBranch({
-        id: "L_Transfer_Confirmation",
+        ownedTools: [
+          {
+            type: "transfer_call",
+            name: "transfer_named_employee",
+            description:
+              "Warm-transfer only after this phone caller confirms the uniquely matched employee.",
+            transfer_destination: {
+              type: "predefined",
+              number: "{{employee_transfer_target}}",
+            },
+            transfer_option: {
+              type: "warm_transfer",
+              opt_out_human_detection: false,
+              agent_detection_timeout_ms: 30_000,
+              private_handoff_option: {
+                type: "prompt",
+                prompt:
+                  "Privately tell {{employee_display_name}} this is a GenStone caller. Include only the caller name and broad topic when known. Do not include order details, email, payment, or unnecessary sensitive information.",
+              },
+              show_transferee_as_caller: true,
+            },
+            speak_during_execution: true,
+            speak_after_execution: false,
+            execution_message_type: "static_text",
+            execution_message_description: "I’ll connect you now.",
+          },
+        ],
         edges: [
-          compoundEquationEdge("transfer_confirmed_phone_call", "T_Named_Employee", [
-            {
-              variable: "transfer_confirmed",
-              operator: "==",
-              value: "true",
-            },
-            {
-              variable: "call_type",
-              operator: "==",
-              value: "phone_call",
-            },
-          ]),
+          equationEdge("employee_not_found", "E_Named_Employee_Transfer", "employee_lookup_status", "==", "not_found"),
+          equationEdge("employee_ambiguous", "E_Named_Employee_Transfer", "employee_lookup_status", "==", "ambiguous"),
+          equationEdge("employee_missing_number", "E_Named_Employee_Transfer", "employee_lookup_status", "==", "missing_number"),
+          equationEdge("employee_error", "E_Named_Employee_Transfer", "employee_lookup_status", "==", "error"),
+          equationEdge("employee_invalid", "E_Named_Employee_Transfer", "employee_lookup_status", "==", "validation_failed"),
+          promptEdge(
+            "transfer_incomplete",
+            "E_Named_Employee_Transfer",
+            "The caller declined, the channel cannot transfer, or the transfer failed and the caller was informed.",
+          ),
         ],
-        elseDestination: "E_Named_Employee_Transfer",
       }),
-      {
-        id: "T_Named_Employee",
-        name: "T_Named_Employee",
-        type: "transfer_call",
-        transfer_destination: {
-          type: "predefined",
-          number: "{{employee_transfer_target}}",
-        },
-        transfer_option: {
-          type: "warm_transfer",
-          opt_out_human_detection: false,
-          agent_detection_timeout_ms: 30_000,
-          private_handoff_option: {
-            type: "prompt",
-            prompt:
-              "Privately tell {{employee_display_name}} this is a GenStone caller. Include only the caller name and broad topic when known. Do not include order details, email, payment, or other unnecessary sensitive information.",
-          },
-          show_transferee_as_caller: true,
-        },
-        speak_during_execution: true,
-        instruction: staticText("I’ll connect you now."),
-        edge: {
-          id: "T_Named_Employee_failed",
-          destination_node_id: "E_Named_Employee_Transfer",
-          transition_condition: {
-            type: "prompt",
-            prompt: "Transfer failed",
-          },
-        },
-      } as ComponentNode,
       componentExit("E_Named_Employee_Transfer"),
     ],
   };
@@ -1253,38 +1057,29 @@ function createDncComponent(workerApiKey: string): Component {
   return {
     name: "DNC",
     flex_mode: false,
-    start_node_id: "C_Confirm_DNC_Number",
+    start_node_id: "S_DNC",
     tools: [tool],
     nodes: [
-      componentConversation({
-        id: "C_Confirm_DNC_Number",
+      componentSubagent({
+        id: "S_DNC",
         instruction:
-          "Confirm {{user_number}}, or collect the specific number the caller wants suppressed. Confirm the do-not-call request once.",
-        alwaysDestination: "X_DNC_Request",
-      }),
-      componentExtract({
-        id: "X_DNC_Request",
-        variables: [
+          "Ask whether {{user_number}} is the number the caller wants suppressed, or collect one replacement. Confirm the do-not-call request once. After confirmation, set dnc_confirmed=true and call suppress_phone_number once. If it succeeds or was already suppressed, confirm that the do-not-call request was handled. If it fails, apologize without claiming success.",
+        toolNames: ["suppress_phone_number"],
+        captureVariables: [
           { name: "dnc_phone", type: "string", description: "The phone confirmed for suppression.", required: true },
-          { name: "dnc_confirmed", type: "boolean", description: "True only for an explicit confirmed do-not-call request.", required: true },
+          { name: "dnc_confirmed", type: "boolean", description: "True only for an explicit confirmed do-not-call request." },
         ],
-        destinationNodeId: "L_DNC_Confirmation",
-      }),
-      componentBranch({
-        id: "L_DNC_Confirmation",
-        edges: [
-          equationEdge("dnc_confirmed", "F_Suppress_Phone", "dnc_confirmed", "==", "true"),
-        ],
-        elseDestination: "E_DNC",
-      }),
-      componentFunction("F_Suppress_Phone", "suppress_phone_number", "L_DNC_Write_Result"),
-      componentBranch({
-        id: "L_DNC_Write_Result",
         edges: [
           equationEdge("dnc_suppressed", "E_DNC", "dnc_status", "==", "suppressed"),
           equationEdge("dnc_duplicate", "E_DNC", "dnc_status", "==", "already_suppressed"),
+          equationEdge("dnc_invalid", "E_DNC", "dnc_status", "==", "validation_failed"),
+          equationEdge("dnc_error", "E_DNC", "dnc_status", "==", "error"),
+          promptEdge(
+            "dnc_declined",
+            "E_DNC",
+            "The caller declined the confirmed request before suppression.",
+          ),
         ],
-        elseDestination: "E_DNC",
       }),
       componentExit("E_DNC"),
     ],
@@ -1302,73 +1097,49 @@ function buildMainNodes(
 
   return [
     conversationNode({
-      id: "C_Greet_And_Classify",
+      id: "C_Greet_Name",
       instruction:
-        "Thank you for calling GenStone. Are you calling about a new project or existing order?",
-      staticInstruction: true,
+        "Say: Thank you for calling GenStone. Who do I have the pleasure of speaking with?",
       edges: [
-        promptEdge("greet_new_project", "X_Primary_Route", "The caller is asking about a new project."),
-        promptEdge("greet_existing_order", "X_Primary_Route", "The caller is asking about an existing order."),
+        promptEdge(
+          "caller_name_supplied",
+          "X_Caller_Name",
+          "The caller supplied their name.",
+        ),
       ],
-      elseDestination: "C_Clarify_Request",
     }),
-    extractNode({
-      id: "X_Primary_Route",
+    {
+      id: "X_Caller_Name",
+      name: "X_Caller_Name",
+      type: "extract_dynamic_variables",
       variables: [
         {
-          name: "primary_route",
-          type: "enum",
-          choices: ["new_project", "existing_order", "other"],
-          description: "Classify the caller's primary reason for calling.",
+          name: "caller_name",
+          type: "string",
+          description: "The name supplied by the caller.",
           required: true,
         },
       ],
-      destinationNodeId: "L_Primary_Route",
-    }),
-    branchNode({
-      id: "L_Primary_Route",
-      edges: [
-        equationEdge("route_new_project", "C_New_Project_Help", "primary_route", "==", "new_project"),
-        equationEdge("route_existing_order", "SF_Contact_Existing_Order", "primary_route", "==", "existing_order"),
-      ],
-      elseDestination: "C_Clarify_Request",
-    }),
+      edges: [alwaysEdge("caller_name_captured", "C_Greet_And_Route")],
+    } as FlowNode,
     conversationNode({
-      id: "C_Clarify_Request",
+      id: "C_Greet_And_Route",
       instruction:
-        "Ask whether this is a new project or an existing order. Do not offer a department, callback, or support outcome until the primary route is known.",
+        "Ask: Are you calling about a new project or an existing order? Clarify only if the answer is unclear.",
       edges: [
-        promptEdge("clarify_new_project", "C_New_Project_Help", "The request is an approved new-project or public-knowledge question."),
-        promptEdge("clarify_existing_order", "SF_Contact_Existing_Order", "The request concerns an existing order."),
-        promptEdge("clarify_unsupported", "X_Capability_Gap", "The request cannot be completed with an approved answer or existing path."),
+        promptEdge("greet_new_project", "C_New_Project_Help", "The caller is asking about a new project."),
+        promptEdge("greet_existing_order", "ORDER_Verification", "The caller is asking about an existing order."),
       ],
-      elseDestination: "C_Greet_And_Classify",
-    }),
-    extractNode({
-      id: "X_Capability_Gap",
-      variables: [
-        { name: "capability_gap_summary", type: "string", description: "Short factual summary of the unsupported request.", required: true },
-      ],
-      destinationNodeId: "L_Capability_Gap",
-    }),
-    branchNode({
-      id: "L_Capability_Gap",
-      edges: [
-        equationEdge("gap_new_project", "CB_Capability_Gap", "primary_route", "==", "new_project"),
-        equationEdge("gap_existing_order", "SUP_Capability_Gap", "primary_route", "==", "existing_order"),
-      ],
-      elseDestination: "C_Greet_And_Classify",
     }),
     conversationNode({
       id: "C_New_Project_Help",
       instruction:
-        "Answer only from the approved GenStone knowledge base. If the question is fully answered, close. If information must be sent or answered later, collect contact context for follow-up.",
+        "Answer the caller's new-project question from approved GenStone knowledge. If the answer is unavailable, offer team follow-up.",
       knowledgeBase: true,
       edges: [
-        promptEdge("new_project_answered", "C_Close_Answered", "The approved knowledge fully answers the caller's question."),
-        promptEdge("new_project_followup", "SF_Contact_New_Project", "The caller needs information sent or answered later."),
+        promptEdge("new_project_followup", "SF_Contact_New_Project", "The caller requested a specific quote, price, turnaround estimate, callback, or other information that must be answered later, or accepted the agent's follow-up offer."),
+        promptEdge("new_project_answered", "E_Call_Complete", "The approved knowledge fully answers the caller's question and no follow-up was requested, offered, promised, or remains pending."),
       ],
-      elseDestination: "SF_Contact_New_Project",
     }),
     sharedComponentNode("SF_Contact_New_Project", "Contact Lookup", "L_New_Project_Contact"),
     branchNode({
@@ -1377,229 +1148,96 @@ function buildMainNodes(
         equationEdge("new_contact_not_found", "PROSPECT_New_Project", "contact_lookup_status", "==", "not_found"),
         equationEdge("new_contact_found", "CB_New_Project", "contact_lookup_status", "==", "found"),
         equationEdge("new_contact_ambiguous", "CB_New_Project", "contact_lookup_status", "==", "ambiguous"),
-        equationEdge("new_contact_validation", "CB_New_Project", "contact_lookup_status", "==", "validation_failed"),
-        equationEdge("new_contact_error", "CB_New_Project", "contact_lookup_status", "==", "error"),
       ],
-      elseDestination: "C_Close_Tool_Failure",
+      elseDestination: "PROSPECT_New_Project",
     }),
-    sharedComponentNode("PROSPECT_New_Project", "Prospect Follow-Up", "L_Prospect_Component_Result"),
-    branchNode({
-      id: "L_Prospect_Component_Result",
-      edges: [
-        equationEdge("prospect_result_sent", "C_Close_Prospect_Followup", "prospect_followup_status", "==", "sent"),
-      ],
-      elseDestination: "C_Close_Tool_Failure",
-    }),
-    sharedComponentNode("SF_Contact_Existing_Order", "Contact Lookup", "L_Existing_Contact"),
-    branchNode({
-      id: "L_Existing_Contact",
-      edges: [],
-      elseDestination: "ORDER_Verification",
-    }),
+    sharedComponentNode("PROSPECT_New_Project", "Prospect Follow-Up", "E_Call_Complete"),
     sharedComponentNode("ORDER_Verification", "Order Verification", "L_Order_Verified"),
     branchNode({
       id: "L_Order_Verified",
       edges: [
-        equationEdge("order_is_verified", "C_Order_Help", "order_verified", "==", "true"),
+        equationEdge("order_is_verified", "L_Post_Verification_Request", "order_verified", "==", "true"),
       ],
-      elseDestination: "SUP_Order_Unverified",
-    }),
-    conversationNode({
-      id: "C_Order_Help",
-      instruction:
-        "Ask how the caller needs help, or repeat back the issue already supplied. Classify tracking numbers, carrier status, shipped status, delivery or arrival questions, and requests to email shipment details as shipment. Use tracked support only for a non-shipment order issue that requires customer-service follow-up. Use direct answer only when verified order data or approved knowledge already answers the question. Existing-order callbacks are not allowed.",
-      alwaysDestination: "X_Order_Help_Outcome",
-    }),
-    extractNode({
-      id: "X_Order_Help_Outcome",
-      variables: [
-        {
-          name: "order_help_outcome",
-          type: "enum",
-          choices: ["direct_answer", "shipment", "tracked_support"],
-          description: "The one approved existing-order outcome.",
-          required: true,
-        },
-      ],
-      destinationNodeId: "L_Order_Help_Outcome",
+      elseDestination: "SF_Contact_Existing_Support",
     }),
     branchNode({
-      id: "L_Order_Help_Outcome",
+      id: "L_Post_Verification_Request",
       edges: [
-        equationEdge("order_direct_answer", "C_Order_Direct_Answer", "order_help_outcome", "==", "direct_answer"),
-        equationEdge("order_shipment", "SHIPMENT_Order", "order_help_outcome", "==", "shipment"),
-        equationEdge("order_support", "SUP_Order", "order_help_outcome", "==", "tracked_support"),
+        promptEdge(
+          "verified_request_support",
+          "SF_Contact_Existing_Support",
+          "The caller wants help resolving damage, a claim, return, warranty, photos, a missing or wrong item, or another service problem.",
+        ),
+        promptEdge(
+          "verified_request_shipment",
+          "SHIPMENT_Order",
+          "The caller asks about shipment status, tracking, carrier information, delivery or arrival timing, how long an order or samples will take to arrive, or shipment details by email, and is not describing a service problem.",
+        ),
       ],
-      elseDestination: "C_Clarify_Request",
+      elseDestination: "C_Existing_Order_Help",
     }),
     conversationNode({
-      id: "C_Order_Direct_Answer",
+      id: "C_Existing_Order_Help",
       instruction:
-        "Speak only verified WooCommerce data or approved public knowledge. Never infer ETA, delivery, approval, inventory, or an outcome.",
+        "Continue with the request the caller already described. Only if they have not said what they need, ask: What can I help you with? Answer from approved GenStone knowledge when possible.",
       knowledgeBase: true,
-      alwaysDestination: "C_Close_Answered",
-    }),
-    sharedComponentNode("SHIPMENT_Order", "Shipment", "L_Shipment_Result"),
-    branchNode({
-      id: "L_Shipment_Result",
       edges: [
-        equationEdge("shipment_email_sent_main", "C_Close_Answered", "shipment_email_status", "==", "sent"),
-        compoundEquationEdge("shipment_email_not_requested", "C_Close_Answered", [
-          { variable: "shipment_lookup_status", operator: "==", value: "found" },
-          { variable: "shipment_email_requested", operator: "==", value: "false" },
-        ]),
-        compoundEquationEdge("shipment_email_not_reconfirmed", "C_Close_Answered", [
-          { variable: "shipment_lookup_status", operator: "==", value: "found" },
-          { variable: "shipment_email_requested", operator: "==", value: "true" },
-          { variable: "order_email_confirmed", operator: "==", value: "false" },
-        ]),
-        equationEdge("shipment_missing_main", "SUP_Shipment", "shipment_lookup_status", "==", "shipment_unavailable"),
+        promptEdge("existing_order_shipment", "SHIPMENT_Order", "The caller asks about shipping, tracking, delivery, arrival, carrier information, or shipment email."),
+        promptEdge("existing_order_support", "SF_Contact_Existing_Support", "The verified-order issue requires customer-service follow-up or cannot be fully answered."),
+        promptEdge("existing_order_answered", "E_Call_Complete", "The verified information fully answers the caller."),
       ],
-      elseDestination: "C_Close_Tool_Failure",
     }),
-    sharedComponentNode("SUP_Order", "Tracked Support", "L_Support_Result"),
-    sharedComponentNode("SUP_Order_Unverified", "Tracked Support", "L_Support_Result"),
-    sharedComponentNode("SUP_Shipment", "Tracked Support", "L_Support_Result"),
-    sharedComponentNode("SUP_Capability_Gap", "Tracked Support", "L_Support_Result"),
-    sharedComponentNode("SUP_Human_Request", "Tracked Support", "L_Support_Result"),
-    sharedComponentNode("SUP_Transfer_Fallback", "Tracked Support", "L_Support_Result"),
+    sharedComponentNode("SHIPMENT_Order", "Shipment", "E_Call_Complete"),
+    sharedComponentNode("SF_Contact_Existing_Support", "Contact Lookup", "SUP_Followup"),
+    sharedComponentNode("SUP_Followup", "Tracked Support", "E_Call_Complete"),
+    sharedComponentNode("CB_New_Project", "Callback", "E_Call_Complete"),
+    sharedComponentNode("TRANSFER_Named_Employee", "Named Employee Transfer", "L_After_Named_Transfer"),
     branchNode({
-      id: "L_Support_Result",
+      id: "L_After_Named_Transfer",
       edges: [
-        equationEdge("support_created", "C_Close_Support_Followup", "case_write_status", "==", "created"),
-        equationEdge("support_notice_failed", "C_Close_Support_Followup", "case_write_status", "==", "created_notice_failed"),
+        equationEdge("transfer_resume_verified_order", "C_Existing_Order_Help", "order_verified", "==", "true"),
+        promptEdge("transfer_resume_existing_order", "ORDER_Verification", "The current request concerns an existing order."),
+        promptEdge("transfer_resume_new_project", "C_New_Project_Help", "The current request concerns a new project."),
       ],
-      elseDestination: "C_Close_Tool_Failure",
+      elseDestination: "C_Greet_And_Route",
     }),
-    sharedComponentNode("CB_New_Project", "Callback", "L_Callback_Component_Result"),
-    sharedComponentNode("CB_Capability_Gap", "Callback", "L_Callback_Component_Result"),
-    sharedComponentNode("CB_Human_Request", "Callback", "L_Callback_Component_Result"),
-    sharedComponentNode("CB_Transfer_Fallback", "Callback", "L_Callback_Component_Result"),
-    branchNode({
-      id: "L_Callback_Component_Result",
-      edges: [
-        equationEdge("callback_result_scheduled", "C_Close_Callback", "callback_status", "==", "scheduled"),
-      ],
-      elseDestination: "C_Close_Tool_Failure",
+    sharedComponentNode("DNC_Global", "DNC", "E_Call_Complete"),
+    endNode("E_Call_Complete", {
+      sayGoodbye: true,
+      globalNodeSetting: {
+        condition:
+          "The caller clearly wants to end the call or says it is a wrong number, and no requested, offered, promised, or pending follow-up action still needs to run. Phrases such as that's everything or goodbye do not end the call while an agreed follow-up, callback, email, support write, transfer, or suppression action remains incomplete.",
+        cool_down: 3,
+        positive_finetune_examples: [
+          { transcript: [{ role: "user", content: "Wrong number, goodbye." }] },
+          { transcript: [{ role: "user", content: "That'll be all." }] },
+        ],
+        negative_finetune_examples: [
+          { transcript: [{ role: "user", content: "Give me a moment to find the order number." }] },
+        ],
+      },
     }),
-    sharedComponentNode("TRANSFER_Named_Employee", "Named Employee Transfer", "L_Named_Transfer_Result"),
-    branchNode({
-      id: "L_Named_Transfer_Result",
-      edges: [
-        equationEdge("transfer_attempt_failed", "C_Transfer_Unavailable", "transfer_confirmed", "==", "true"),
-      ],
-      elseDestination: "L_Transfer_Fallback",
-    }),
-    conversationNode({
-      id: "C_Transfer_Unavailable",
-      instruction:
-        "Tell the caller the connection could not be completed. Do not claim the employee declined or is unavailable. Continue with the follow-up for the already-classified primary route.",
-      alwaysDestination: "L_Transfer_Fallback",
-    }),
-    branchNode({
-      id: "L_Transfer_Fallback",
-      edges: [
-        equationEdge("transfer_fallback_new_project", "CB_Transfer_Fallback", "primary_route", "==", "new_project"),
-        equationEdge("transfer_fallback_existing_order", "SUP_Transfer_Fallback", "primary_route", "==", "existing_order"),
-      ],
-      elseDestination: "C_Greet_And_Classify",
-    }),
-    branchNode({
-      id: "L_Human_Request_Route",
-      edges: [
-        equationEdge("human_request_new_project", "CB_Human_Request", "primary_route", "==", "new_project"),
-        equationEdge("human_request_existing_order", "SUP_Human_Request", "primary_route", "==", "existing_order"),
-      ],
-      elseDestination: "C_Greet_And_Classify",
-    }),
-    sharedComponentNode("DNC_Global", "DNC", "L_DNC_Component_Result"),
-    branchNode({
-      id: "L_DNC_Component_Result",
-      edges: [
-        equationEdge("dnc_result_suppressed", "C_Close_DNC", "dnc_status", "==", "suppressed"),
-        equationEdge("dnc_result_duplicate", "C_Close_DNC", "dnc_status", "==", "already_suppressed"),
-      ],
-      elseDestination: "C_Close_Tool_Failure",
-    }),
-    conversationNode({
-      id: "C_Close_Answered",
-      instruction: "Briefly summarize only the verified answer and close naturally.",
-      alwaysDestination: "X_Final_Call_Outcome",
-    }),
-    conversationNode({
-      id: "C_Close_Prospect_Followup",
-      instruction:
-        "Say the information was sent to the team and state only the agreed next step. Never mention an internal recipient or Salesforce record.",
-      alwaysDestination: "X_Final_Call_Outcome",
-    }),
-    conversationNode({
-      id: "C_Close_Callback",
-      instruction:
-        "Confirm only the accepted callback date, Mountain time, and callback phone. Never mention internal email.",
-      alwaysDestination: "X_Final_Call_Outcome",
-    }),
-    conversationNode({
-      id: "C_Close_Support_Followup",
-      instruction:
-        "Say the customer service team will respond by the end of the next business day. Never say case or ticket and never offer a callback appointment.",
-      alwaysDestination: "X_Final_Call_Outcome",
-    }),
-    conversationNode({
-      id: "C_Close_DNC",
-      instruction: "Confirm that the do-not-call request was handled.",
-      alwaysDestination: "X_Final_Call_Outcome",
-    }),
-    conversationNode({
-      id: "C_Close_Tool_Failure",
-      instruction:
-        "Do not claim an action succeeded. Apologize briefly and preserve the requested context for quality review.",
-      alwaysDestination: "X_Final_Call_Outcome",
-    }),
-    extractNode({
-      id: "X_Final_Call_Outcome",
-      variables: [
-        {
-          name: "call_outcome",
-          type: "enum",
-          choices: [
-            "answered",
-            "shipment_emailed",
-            "callback_scheduled",
-            "support_follow_up",
-            "prospect_follow_up",
-            "transferred",
-            "dnc",
-            "ended",
-            "tool_failure",
-          ],
-          description: "Choose exactly one outcome from the completed path and tool statuses.",
-          required: true,
-        },
-      ],
-      destinationNodeId: "E_Call_Complete",
-    }),
-    endNode("E_Call_Complete"),
     conversationNode({
       id: "G_Human_Request",
       instruction:
-        "If the caller already named an employee, say you will check whether that person can be connected, then use named employee transfer. Do not promise or announce a transfer before the channel and employee lookup permit it. Otherwise use the follow-up for the already-classified primary route. Never ask a generic requester to choose a person or department.",
+        "If the caller named an employee, say you will check that person. Otherwise say you can continue helping with the caller's current request. Do not ask them to choose a person or department.",
       edges: [
         promptEdge("human_named_employee", "TRANSFER_Named_Employee", "The caller independently supplied an employee name."),
       ],
-      elseDestination: "L_Human_Request_Route",
       globalNodeSetting: {
-        condition: "The caller clearly asks for a human, employee, or department.",
+        condition: "The caller clearly asks for a human or department, or asks to speak with a named employee anywhere in the call.",
         cool_down: 3,
         go_back_conditions: [
           {
             id: "human_request_go_back",
             transition_condition: promptCondition(
-              "The caller changes their mind and asks the agent to continue helping.",
+              "The caller accepts help from the agent or continues describing the current request without naming an employee.",
             ),
           },
         ],
         positive_finetune_examples: [
           { transcript: [{ role: "user", content: "Can I speak with a person?" }] },
+          { transcript: [{ role: "user", content: "Could I speak with Adeola, please?" }] },
         ],
         negative_finetune_examples: [
           { transcript: [{ role: "user", content: "You sound human." }] },
@@ -1621,21 +1259,6 @@ function buildMainNodes(
         ],
       },
     }),
-    conversationNode({
-      id: "G_End_Call",
-      instruction: "Close politely without creating support or callback work.",
-      alwaysDestination: "X_Final_Call_Outcome",
-      globalNodeSetting: {
-        condition: "The caller clearly wants to end the call or says it is a wrong number.",
-        cool_down: 3,
-        positive_finetune_examples: [
-          { transcript: [{ role: "user", content: "Wrong number, goodbye." }] },
-        ],
-        negative_finetune_examples: [
-          { transcript: [{ role: "user", content: "Give me a moment to find the order number." }] },
-        ],
-      },
-    }),
   ];
 }
 
@@ -1645,16 +1268,16 @@ export function buildConversationFlowConfig(
   return {
     model_choice: {
       type: "cascading",
-      model: "gpt-5.2",
+      model: "gpt-5.5",
       high_priority: true,
     },
     model_temperature: 0.2,
     start_speaker: "agent",
-    start_node_id: "C_Greet_And_Classify",
+    start_node_id: "C_Greet_Name",
     flex_mode: false,
     tool_call_strict_mode: true,
     global_prompt:
-      "Follow the current node contract exactly. For new-project follow-up, use Salesforce contact lookup, then Prospect Follow-Up when the contact is not found or Callback for the other routed results. A verified existing-order request about tracking, shipping status, delivery, arrival, carrier information, or emailing shipment details always uses Shipment before any support fallback. Other unresolved existing-order work uses Tracked Support and never callback scheduling. Use only confirmed caller facts, verified tool results, and approved knowledge. Never speak opaque tokens, direct employee numbers, internal addresses, provider names, credentials, or raw errors. Never invent an outcome, promise, department, capability, ETA, or policy.",
+      "Use only approved knowledge, caller-confirmed facts, and verified tool results. Never claim an action succeeded before its tool succeeds. Never invent an outcome, promise, ETA, inventory status, approval, policy, or capability. Never expose internal system names, tool data, identifiers, credentials, direct employee numbers, internal addresses, or raw errors. Never read a tracking number aloud.",
     default_dynamic_variables: defaultDynamicVariables,
     knowledge_base_ids: [KNOWLEDGE_BASE_ID],
     kb_config: {
@@ -1662,7 +1285,7 @@ export function buildConversationFlowConfig(
       filter_score: 0.6,
     },
     notes: [
-      { id: FLOW_RELEASE, content: "Immutable GenStone Retell draft release v5", display_position: { x: -300, y: -200 }, size: { width: 260, height: 90 } },
+      { id: FLOW_RELEASE, content: `Immutable GenStone Retell draft release ${SHARED_COMPONENT_RELEASE}`, display_position: { x: -300, y: -200 }, size: { width: 260, height: 90 } },
       { id: "note_main_router", content: "Main router", display_position: { x: 0, y: 0 }, size: { width: 220, height: 90 } },
       { id: "note_new_project", content: "New-project path", display_position: { x: -650, y: 450 }, size: { width: 220, height: 90 } },
       { id: "note_existing_order", content: "Existing-order path", display_position: { x: 450, y: 450 }, size: { width: 220, height: 90 } },
@@ -1726,6 +1349,81 @@ export function buildSharedComponentConfigs(
       name: RETELL_SHARED_COMPONENT_NAMES[componentName],
     },
   }));
+}
+
+export function buildAgentConfig(
+  conversationFlowId: string,
+  conversationFlowVersion: number,
+): AgentCreateParams {
+  return {
+    agent_name: "GenStone Customer Agent",
+    response_engine: {
+      type: "conversation-flow",
+      conversation_flow_id: conversationFlowId,
+      version: conversationFlowVersion,
+    },
+    voice_id: "retell-Brynne",
+    voice_temperature: 1,
+    voice_speed: 1,
+    volume: 1,
+    responsiveness: 0.7,
+    interruption_sensitivity: 0.6,
+    end_call_after_silence_ms: 50_000,
+    max_call_duration_ms: 600_000,
+    ambient_sound: "call-center",
+    language: "en-US",
+    timezone: "America/Denver",
+    data_storage_setting: "everything",
+    handbook_config: {
+      speech_normalization: true,
+      scope_boundaries: true,
+    },
+    webhook_url: `${WORKER_BASE_URL}/v1/retell/webhooks`,
+    webhook_events: [
+      "call_started",
+      "call_ended",
+      "call_analyzed",
+      "transfer_started",
+      "transfer_bridged",
+      "transfer_cancelled",
+      "transfer_ended",
+    ],
+    post_call_analysis_model: "gpt-5.2",
+    post_call_analysis_data: [
+      {
+        name: "primary_route",
+        type: "enum",
+        choices: ["new_project", "existing_order", "other"],
+        description: "Primary caller route.",
+      },
+      {
+        name: "call_outcome",
+        type: "enum",
+        choices: [
+          "answered",
+          "shipment_emailed",
+          "callback_scheduled",
+          "support_follow_up",
+          "prospect_follow_up",
+          "transferred",
+          "dnc",
+          "ended",
+          "tool_failure",
+        ],
+        description: "Final caller-safe operational outcome.",
+      },
+      {
+        name: "order_verified",
+        type: "boolean",
+        description: "Whether both order verification checks passed.",
+      },
+      {
+        name: "capability_gap_summary",
+        type: "string",
+        description: "Unsupported request captured for quality review.",
+      },
+    ],
+  };
 }
 
 export const RETELL_BUILD_CONSTANTS = {

@@ -15,11 +15,10 @@ The deployed runtime exposes:
 - focused Salesforce, WooCommerce, Customer.io, Zendesk, and Five9 clients.
 
 The Retell Conversation Flow deployment definition is present under `retell/`.
-An API-verified unpublished draft agent exists with dedicated immutable
-GenStone shared subflows. Production phone binding and the call test matrix
-remain outstanding as recorded in
-[Implementation next steps](./implementation-next-steps.md). No Workflow,
-Durable Object, Queue, or scheduled trigger is active.
+The API-verified `v49` agent is published and its production Retell number is
+pinned to agent version `0`. Live phone-path and Twilio transfer QA remain
+outstanding as recorded in [Implementation next steps](./implementation-next-steps.md).
+No Workflow, Durable Object, Queue, or scheduled trigger is active.
 
 Retell design and historical GenSteel reference material are intentionally isolated in
 [`../retell-reference-materials`](../retell-reference-materials/README.md). It

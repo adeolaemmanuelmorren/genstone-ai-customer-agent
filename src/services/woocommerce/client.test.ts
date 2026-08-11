@@ -4,7 +4,6 @@ import {
   findWooOrders,
   getStoredShipment,
   getTrackingUrl,
-  maskEmail,
   normalizeUsPhone,
 } from "./client";
 
@@ -22,11 +21,6 @@ describe("WooCommerce caller-safe helpers", () => {
     expect(normalizeUsPhone("+1 (303) 555-0100")).toBe("3035550100");
     expect(normalizeUsPhone("303-555-0100")).toBe("3035550100");
     expect(normalizeUsPhone("555-0100")).toBeUndefined();
-  });
-
-  it("masks the local part without changing the domain", () => {
-    expect(maskEmail("customer@example.com")).toBe("cu******@example.com");
-    expect(maskEmail("a@example.com")).toBe("a***@example.com");
   });
 
   it("retrieves an order number directly", async () => {
@@ -59,6 +53,40 @@ describe("WooCommerce caller-safe helpers", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(orders).toHaveLength(1);
+  });
+
+  it("uses successful phone searches when another format times out", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: URL) => {
+      const search = input.searchParams.get("search");
+      if (search === "3035550100") {
+        return Promise.reject(new DOMException("Timed out", "TimeoutError"));
+      }
+
+      return Promise.resolve(search === "(303) 555-0100"
+        ? new Response(JSON.stringify([wooOrderPayload("(303) 555-0100")]))
+        : new Response("[]"));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const orders = await findWooOrders(env, {
+      identifierType: "caller_phone",
+      identifier: "+1 303 555 0100",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(orders).toHaveLength(1);
+  });
+
+  it("preserves an error when every phone search fails", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(
+      new DOMException("Timed out", "TimeoutError"),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(findWooOrders(env, {
+      identifierType: "caller_phone",
+      identifier: "+1 303 555 0100",
+    })).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
   it("normalizes shipped dates and builds approved carrier links", () => {

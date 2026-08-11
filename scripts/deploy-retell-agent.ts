@@ -1,6 +1,5 @@
 import Retell from "retell-sdk";
 import type {
-  AgentCreateParams,
   AgentResponse,
 } from "retell-sdk/resources/agent";
 import type {
@@ -11,6 +10,7 @@ import type {
 } from "retell-sdk/resources/conversation-flow";
 
 import {
+  buildAgentConfig,
   buildConversationFlowConfig,
   buildSharedComponentConfigs,
   RETELL_BUILD_CONSTANTS,
@@ -30,81 +30,6 @@ function requireEnvironmentVariable(name: string): string {
   }
 
   return value;
-}
-
-function buildAgentConfig(
-  conversationFlowId: string,
-  conversationFlowVersion: number,
-): AgentCreateParams {
-  return {
-    agent_name: AGENT_NAME,
-    response_engine: {
-      type: "conversation-flow",
-      conversation_flow_id: conversationFlowId,
-      version: conversationFlowVersion,
-    },
-    voice_id: "retell-Brynne",
-    voice_temperature: 1,
-    voice_speed: 1,
-    volume: 1,
-    responsiveness: 0.7,
-    interruption_sensitivity: 0.6,
-    end_call_after_silence_ms: 50_000,
-    max_call_duration_ms: 600_000,
-    ambient_sound: "call-center",
-    language: "en-US",
-    timezone: "America/Denver",
-    data_storage_setting: "everything",
-    handbook_config: {
-      speech_normalization: true,
-      scope_boundaries: true,
-    },
-    webhook_url: `${RETELL_BUILD_CONSTANTS.workerBaseUrl}/v1/retell/webhooks`,
-    webhook_events: [
-      "call_started",
-      "call_ended",
-      "call_analyzed",
-      "transfer_started",
-      "transfer_bridged",
-      "transfer_cancelled",
-      "transfer_ended",
-    ],
-    post_call_analysis_model: "gpt-5.2",
-    post_call_analysis_data: [
-      {
-        name: "primary_route",
-        type: "enum",
-        choices: ["new_project", "existing_order", "other"],
-        description: "Primary caller route.",
-      },
-      {
-        name: "call_outcome",
-        type: "enum",
-        choices: [
-          "answered",
-          "shipment_emailed",
-          "callback_scheduled",
-          "support_follow_up",
-          "prospect_follow_up",
-          "transferred",
-          "dnc",
-          "ended",
-          "tool_failure",
-        ],
-        description: "Final caller-safe operational outcome.",
-      },
-      {
-        name: "order_verified",
-        type: "boolean",
-        description: "Whether both order verification checks passed.",
-      },
-      {
-        name: "capability_gap_summary",
-        type: "string",
-        description: "Unsupported request captured for quality review.",
-      },
-    ],
-  };
 }
 
 function validateExistingSharedComponent(

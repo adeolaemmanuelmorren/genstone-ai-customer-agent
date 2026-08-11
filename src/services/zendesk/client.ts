@@ -26,6 +26,7 @@ type ZendeskCountry = "united_states" | "canada" | "other_country";
 
 interface ZendeskTicketMetadata {
   customerName: string;
+  customerEmail: string;
   phone: string;
   callerType: ZendeskCallerType;
   country?: ZendeskCountry;
@@ -52,6 +53,10 @@ export async function createZendeskCase(
       ticket: {
         subject: input.subject,
         comment: { body: input.privateComment, public: false },
+        requester: {
+          name: input.metadata.customerName,
+          email: input.metadata.customerEmail,
+        },
         group_id: SUPPORT_GROUP_ID,
         brand_id: GENSTONE_BRAND_ID,
         ticket_form_id: GENSTONE_TICKET_FORM_ID,
@@ -148,5 +153,5 @@ function zendeskFetch(
       "Content-Type": "application/json",
       ...init.headers,
     },
-  }, 6_000);
+  });
 }

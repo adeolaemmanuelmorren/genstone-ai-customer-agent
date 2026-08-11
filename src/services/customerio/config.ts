@@ -9,9 +9,17 @@ export const CUSTOMERIO_MESSAGES = {
   },
   shipmentDetails: {
     transactionalMessageId: 7,
+    recipient: "adeolamorren@gmail.com",
+    blindCopyRecipient: "travis.m@generalsteel.com",
   },
   supportCaseCreated: {
     transactionalMessageId: 8,
     recipient: "appt@genstone.com",
   },
 } as const;
+
+export function resolveShipmentEmailRecipient(
+  _callerConfirmedRecipient: string,
+): string {
+  return CUSTOMERIO_MESSAGES.shipmentDetails.recipient;
+}

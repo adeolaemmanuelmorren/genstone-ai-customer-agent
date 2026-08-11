@@ -28,13 +28,14 @@ Lead or Contact during the call.
 Salesforce also owns the named-person transfer directory:
 
 - Search Salesforce Users by the employee name supplied by the caller.
-- Only Users whose Salesforce status is Active are eligible.
+- Only active Users in the GenStone, GenStone Manager, or GenStone Remote
+  Access profiles who have a direct phone number are eligible.
 - Use the employee's direct phone number as the Retell transfer destination.
 - Active means the person still works for GenStone. It does not prove they are
   presently available.
-- If no unique active match, no direct number, or the transfer fails, return to
-  the primary route: new projects use callback scheduling; existing orders use
-  Zendesk follow-up.
+- If no unique active match, no direct number, or the transfer fails, resume the
+  normal primary route. Do not bypass new-project help, order verification, or
+  the ordinary follow-up decision gates.
 - Do not proactively ask callers to choose a person or department.
 
 ## WooCommerce Orders And Shipments
@@ -42,10 +43,13 @@ Salesforce also owns the named-person transfer directory:
 Existing-order help starts with the shared verification gate:
 
 1. Confirm the caller's phone number.
-2. Look up the most recent order using that number.
-3. If found, confirm the order items and order email.
-4. If not found, ask for another phone number or the order number and confirm
-   the matching order.
+2. Exclude quote-status drafts and look up the most recent actual order by
+   phone or exact order number.
+3. If found, identify a stored sample or explicitly signaled retail order and
+   confirm the order items.
+4. Ask for an order number at most once. If the caller does not have it, check
+   the remaining recent non-quote orders for the confirmed phone without
+   asking again.
 5. Only then discuss the order or use it in another tool.
 
 WooCommerce is authoritative for regular orders, sample orders, order contact,
@@ -55,9 +59,9 @@ tracking link, and stored shipped date. It must not invent live ETA, delivery,
 exception, or item-level partial-shipment status.
 
 When a verified caller asks when a shipment will arrive or asks for tracking,
-the agent may offer to email the stored shipment details. It must confirm the
-order email and send only to that address. This is the one approved
-customer-facing Customer.io email path.
+the agent may offer to email the stored shipment details. Only after the caller
+accepts, ask which email address to use and confirm that destination once. This
+is the one approved customer-facing Customer.io email path.
 
 ## Retailer Orders
 
@@ -67,8 +71,8 @@ Retailer, store, and Pro Desk orders do not require a separate lookup path.
   WooCommerce order number. This covers dealer, distributor, or retailer-context
   orders when GenStone has an ordinary WooCommerce record for them, including
   orders created through the staff dashboard.
-- Confirm the matched order with its items and stored order email before
-  discussing it. Retailer name, billing company, store number, PO, or CPO may be
+- Confirm the matched order with its items before discussing it. Retailer name,
+  billing company, store number, PO, or CPO may be
   retained as follow-up context, but none is a lookup or verification factor.
 - Do not infer purchase channel from `created_via=dashboard`; the dashboard also
   creates non-retailer orders.
@@ -123,11 +127,10 @@ Confirmed launch behavior:
   values also provide sortable tags such as `answering_service` and `customer`.
 - Populate Customer Name, Phone, caller type (Customer, Partner, or Pro), and
   Country when known.
-- Do not routinely ask whether photos exist. Preserve photo availability only
-  when the caller volunteers it or it is necessary to understand the issue.
-- Do not tell the caller a case or ticket was created. State that the customer
-  service team will respond by the end of the next business day. This is a
-  response expectation, not a scheduled appointment.
+- Do not tell the caller a case or ticket was created. State that the team will
+  be in touch as soon as possible. Internally, customer service still handles
+  open tickets by the end of the next business day; this is not a scheduled
+  appointment.
 
 Every successful Zendesk case creation must also send an internal case-created
 email through Customer.io.
@@ -154,8 +157,12 @@ Customer.io is the transactional email service for:
 - centralized callback requests to GenStone managers;
 - unmatched new-prospect details to the approved internal recipient;
 - an internal notification after a Zendesk case is created;
-- shipment details to the confirmed order email, only after the verified caller
-  asks for or accepts that email.
+- shipment details to a caller-confirmed destination email, only after the
+  verified caller asks for or accepts that email.
+
+During the temporary shipment-email safety override, the primary recipient is
+the source-owned test inbox and `travis.m@generalsteel.com` receives a BCC copy.
+The caller-supplied address does not receive the message.
 
 Sender identities, internal recipients, and transactional-message ids are
 typed product source configuration. Do not read generic internal-email from/to
@@ -175,10 +182,13 @@ write, and report success only after the backend confirms it.
 
 Retell Conversation Flow supports a Call Transfer node whose destination can be
 a runtime dynamic variable. Use it only when the caller independently requests
-a named employee and Salesforce returns one unique active User with a direct
-phone number. Use standard warm transfer with human detection, auto-greeting,
-and a private employee whisper. GenStone uses Twilio; set Retell's transfer
-caller ID to **User's Number** so the employee sees the customer's number. If
+a named employee and Salesforce returns one unique active GenStone-profile User
+with a direct phone number. The directory query is restricted to the GenStone,
+GenStone Manager, and GenStone Remote Access profiles; inactive Users and Users
+without a phone number are ineligible. Use standard warm transfer with human
+detection, auto-greeting, and a private employee whisper. GenStone uses Twilio;
+set Retell's transfer caller ID to **User's Number** so the employee sees the
+customer's number. If
 the attempted connection fails, return to the agent, tell the caller the
 connection could not be completed, and use the primary route's follow-up:
 new-project callback or existing-order Zendesk.

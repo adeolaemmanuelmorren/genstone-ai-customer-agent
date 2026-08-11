@@ -21,7 +21,7 @@ Create one phone-capable **Conversation Flow** agent.
 | Tool-call strict mode | On |
 | Language | English |
 | Start speaker | Agent |
-| Begin message | “Thank you for calling GenStone. Are you calling about a new project or existing order?” |
+| Begin message | “Thank you for calling GenStone. Who do I have the pleasure of speaking with?” |
 | Components | Dedicated versioned GenStone shared subflows; never reuse across agents or edit in place |
 | Per-node model overrides | None initially; add only after a failing node is isolated in testing |
 | Code, SMS, MCP, Press Digit, Agent Transfer | Do not add |
@@ -53,462 +53,297 @@ Do not paste tool contracts, internal routing addresses, provider details, or
 the entire capability map into every node. The global prompt should eventually
 contain only universal behavior shared by all nodes.
 
-## Naming Convention
+## Graph Design Rule
 
-Use these prefixes so Retell history is easy to scan:
+Use Retell nodes for business boundaries, not for every sentence.
 
-| Prefix | Retell type | Example |
-| --- | --- | --- |
-| `C_` | Conversation | `C_Order_Help` |
-| `X_` | Extract DV | `X_Order_Confirmation` |
-| `L_` | Logic Split | `L_Order_Lookup_Result` |
-| `F_` | Function | `F_Lookup_Order` |
-| `T_` | Call Transfer | `T_Named_Employee` |
-| `G_` | Global-enabled Conversation | `G_Human_Request` |
-| `E_` | End | `E_Call_Complete` |
+- A shared path defaults to one multi-turn **Subagent node** plus one exit.
+- The Subagent owns fact collection, caller corrections, confirmation, and its
+  allowed tools.
+- Use an owned Extract Dynamic Variable tool inside the Subagent when the
+  backend needs structured caller facts.
+- Keep backend result branches on the main canvas only when they prevent a
+  false success statement or enforce a different business outcome.
+- Add a non-speaking Extract, Function, or Branch node only when Retell must
+  enforce an atomic boundary before generated speech: confirmed contact before
+  lookup, confirmed write data before mutation, or phone channel before
+  transfer.
+- Do not add separate Conversation, Extract, Branch, and Function nodes for
+  each turn in one ordinary interaction.
+- Do not perform final-outcome or capability-gap extraction during the call.
+  Retell post-call analysis owns those reporting fields.
+- Create a new immutable version of every shared component and the main flow
+  for each deployed change.
 
-Names describe the action or result. Do not use generic names such as `Step 4`,
-`Tool`, `Success`, or `Fallback`.
+The current release uses these prefixes:
+
+| Prefix | Purpose |
+| --- | --- |
+| `C_` | Main multi-turn conversation or caller-safe close |
+| `S_` | Shared-component Subagent |
+| `L_` | Backend-result branch that changes the business outcome |
+| `G_` | Global interruption |
+| `E_` | Exit or end |
 
 ## Dynamic Variables
 
-Retell provides `{{call_id}}`, `{{user_number}}`, `{{agent_number}}`, and
-`{{call_type}}`. Use `{{user_number}}` as the initial caller-number candidate;
-it is not automatically confirmed.
+Retell supplies `{{call_id}}`, `{{user_number}}`, `{{agent_number}}`, and
+`{{call_type}}`. The caller number is an initial candidate, not confirmed
+identity.
 
-Do not initialize extracted caller fields to empty strings because Retell's
-`exists` condition treats an empty string as present. Initialize only status and
-outcome fields to explicit values such as `not_run`. Prefer exact enum/status
-comparisons over `exists` checks.
+Only status fields are initialized to `not_run`. Caller-provided fields are
+created when captured; do not initialize them to empty strings.
 
-### Conversation variables
+Caller facts used by the active components are:
 
-| Variable | Type | Allowed values or purpose |
-| --- | --- | --- |
-| `primary_route` | Enum | `new_project`, `existing_order`, `other` |
-| `caller_name` | Text | Confirmed or caller-supplied name |
-| `confirmed_phone` | Text | Number confirmed for lookup or callback |
-| `caller_email` | Text | Caller-supplied email when needed |
-| `caller_type` | Enum | `customer`, `contractor`, `distributor`, `retail_partner`, `other` |
-| `caller_country` | Text | Country when known; do not guess |
-| `communication_preference` | Text | Ordinary follow-up context only |
-| `project_summary` | Text | Minimum useful new-project context |
-| `postal_code` | Text | Optional project context |
-| `prospect_confirmed` | Boolean | Caller confirmed contact and project summary before internal follow-up |
-| `order_identifier_type` | Enum | `caller_phone`, `alternate_phone`, `order_number` |
-| `order_identifier` | Text | Lookup value; keep order numbers as Text |
-| `order_items_confirmed` | Boolean | Caller confirmed candidate order items |
-| `order_email_confirmed` | Boolean | Caller confirmed candidate order email |
-| `order_verified` | Boolean | True only when both confirmations are true |
-| `order_help_outcome` | Enum | `direct_answer`, `shipment`, `tracked_support` |
-| `shipment_email_requested` | Boolean | Caller accepted or requested shipment email |
-| `support_summary` | Text | Short factual description of the issue |
-| `support_summary_confirmed` | Boolean | Caller confirmed the factual support summary |
-| `callback_subject` | Text | Broad caller-confirmed topic |
-| `callback_summary` | Text | Short factual summary |
-| `callback_date` | Text | Caller-requested calendar date |
-| `callback_time` | Text | Caller-requested local time, normalized by backend |
-| `callback_phone` | Text | Confirmed callback number |
-| `callback_confirmed` | Boolean | Caller confirmed the read-back |
-| `urgency_context` | Text | Facts for internal priority context; no service promise |
-| `requested_employee_name` | Text | Name independently supplied by caller |
-| `transfer_confirmed` | Boolean | Caller confirmed transfer after employee match |
-| `dnc_phone` | Text | Number the caller confirmed for suppression |
-| `dnc_confirmed` | Boolean | Explicit do-not-call confirmation |
-| `capability_gap_summary` | Text | Unsupported request captured for follow-up and QA |
+- contact: `caller_name`, `confirmed_phone`, and `caller_email` once a path
+  requires it or phone-only Salesforce lookup does not find a unique contact;
+- order: `order_identifier_type`, `order_identifier`,
+  `order_items_confirmed`, `order_verified`;
+- new project: `project_summary`, confirmed `caller_email`, optional volunteered
+  `postal_code`;
+- shipment: `shipment_email_requested`, `shipment_email`;
+- support: `support_summary`, `caller_type`, confirmed `caller_email`,
+  optional country, preference, photo, and urgency context;
+- callback: subject, summary, date, time, phone, email, and `callback_confirmed`;
+- transfer: `requested_employee_name`, `transfer_confirmed`;
+- DNC: `dnc_phone`, `dnc_confirmed`.
 
-### Tool-result variables
+Tool-result statuses are `contact_lookup_status`, `order_lookup_status`,
+`shipment_lookup_status`, `shipment_email_status`, `case_write_status`,
+`callback_status`, `prospect_followup_status`,
+`employee_lookup_status`, and `dnc_status`.
 
-Initialize every status below to `not_run`:
+Never speak opaque references, direct employee numbers, internal addresses,
+provider errors, raw tool results, JSON, field names, or dynamic-variable
+names.
 
-| Variable | Written by | Purpose |
-| --- | --- | --- |
-| `contact_lookup_status` | `lookup_contact` | `found`, `not_found`, `ambiguous`, `validation_failed`, `error` |
-| `contact_token` | `lookup_contact` | Opaque internal contact reference |
-| `order_lookup_status` | `lookup_order` | `found`, `not_found`, `ambiguous`, `validation_failed`, `error` |
-| `order_candidate_token` | `lookup_order` | Opaque candidate order reference; not proof of verification |
-| `order_item_summary` | `lookup_order` | Caller-safe item summary used for confirmation |
-| `order_email_masked` | `lookup_order` | Masked email hint used for confirmation |
-| `order_status_summary` | `lookup_order` | Caller-safe stored order status; speak only after verification |
-| `shipment_lookup_status` | `lookup_shipment` | `found`, `shipment_unavailable`, `error` |
-| `shipment_safe_summary` | `lookup_shipment` | Verified carrier/tracking/stored shipped-date summary |
-| `shipment_email_status` | `email_shipment_tracking` | `sent`, `shipment_unavailable`, `delivery_failed`, `error` |
-| `case_write_status` | `create_support_case` | `created`, `created_notice_failed`, `validation_failed`, `error` |
-| `callback_status` | `schedule_callback` | `scheduled`, `invalid_day_or_time`, `delivery_failed`, `error` |
-| `prospect_followup_status` | `send_prospect_follow_up` | `sent`, `delivery_failed`, `validation_failed`, `error` |
-| `employee_lookup_status` | `lookup_active_employee` | `found`, `not_found`, `ambiguous`, `missing_number`, `error` |
-| `employee_display_name` | `lookup_active_employee` | Safe matched employee name for transfer confirmation |
-| `employee_transfer_target` | `lookup_active_employee` | E.164 number or SIP target used only by the transfer node |
-| `dnc_status` | `suppress_phone_number` | `suppressed`, `already_suppressed`, `validation_failed`, `error` |
-| `call_outcome` | `X_Final_Call_Outcome` or Retell transfer result | `answered`, `shipment_emailed`, `callback_scheduled`, `support_follow_up`, `prospect_follow_up`, `transferred`, `dnc`, `ended`, `tool_failure` |
+## Tool Configuration
 
-Never speak opaque tokens, internal addresses, direct employee numbers,
-provider errors, or raw function results. Dynamic variables and metadata appear
-in Retell call records; never put API keys or other credentials in them.
+Custom tools are Component-owned and use the Worker routes in the
+[tool contract catalog](./tool-contract-catalog.md).
 
-## Standard Custom-Function Configuration
+- Send `POST` JSON with arguments at the root.
+- Authenticate with the Retell-scoped Worker bearer key.
+- Bind trusted tokens, route guards, confirmations, and idempotency keys as
+  constants from dynamic variables; do not let the language model invent them.
+- Let the custom tool own one short static execution sentence.
+- Do not speak again after execution from a separate Function node.
+- Map only approved caller-safe response fields.
+- Backend writes remain idempotent and fail closed.
+- A missing or failed result never becomes caller-facing success.
 
-Create the functions named in the
-[tool contract catalog](./tool-contract-catalog.md). Unless a route has a
-documented exception, configure each one as follows:
-
-| Setting | Value |
-| --- | --- |
-| Method | `POST` |
-| URL | Worker base URL plus the catalog route |
-| Payload | Args only |
-| Content type | `application/json` |
-| Authentication | Static `Authorization: Bearer …` header using the Retell-scoped Worker key; never a dynamic variable |
-| Retell signature | Worker verifies `X-Retell-Signature` against the exact raw body before parsing |
-| Wait for Result | On |
-| Speak During Execution | Optional short static sentence; never announce success before the result |
-| Retell retries | Disabled where configurable; do not rely on a provider retry count |
-| Backend writes | Idempotent using the supplied idempotency key |
-| Response size | Small caller-safe JSON only |
-
-Every request includes `call_id: "{{call_id}}"`. Every write includes an
-idempotency key such as `"{{call_id}}:schedule_callback"`. A corrected retry is
-the same logical action unless the backend contract explicitly creates a new
-version.
-
-Return this common shape:
-
-```json
-{
-  "ok": true,
-  "result_code": "found",
-  "safe_summary": "Caller-safe summary when applicable",
-  "data": {}
-}
-```
-
-Map `result_code` into the tool's status variable. Map only the specific
-`data` fields listed above. A missing mapping must take an Else/error edge; it
-must never become success. Function nodes explain nothing themselves—route to
-a Conversation node after the result is available.
-
-Tools used inside an Agent Component must be defined in that Component; Retell
-does not expose Component-owned tools on the main canvas. Keep each tool in the
-one Component that owns its action. When the same component is used from two
-routes, place two instances of that Component on the main canvas so each
-instance can have the correct outgoing edge.
-
-### Function argument bindings
-
-Bind these as constants from confirmed dynamic variables. Do not let the LLM
-invent opaque tokens, confirmation booleans, or idempotency keys.
-
-| Function | Required bound arguments |
-| --- | --- |
-| `lookup_contact` | `call_id={{call_id}}`, `phone={{confirmed_phone}}`, optional confirmed `email={{caller_email}}` |
-| `lookup_order` | `call_id`, `identifier_type={{order_identifier_type}}`, `identifier={{order_identifier}}` |
-| `lookup_shipment` | `call_id`, `order_candidate_token`, `order_items_confirmed`, `order_email_confirmed`, `order_verified` |
-| `lookup_active_employee` | `call_id`, `employee_name={{requested_employee_name}}` |
-| `schedule_callback` | `call_id`, idempotency key, constant `primary_route=new_project`, `caller_name`, `callback_subject`, `callback_summary`, `callback_date`, `callback_time`, `callback_phone`, `callback_confirmed`, optional preference and urgency context |
-| `send_prospect_follow_up` | `call_id`, idempotency key, constant `primary_route=new_project`, confirmed contact fields, `project_summary`, optional `postal_code`, `prospect_confirmed` |
-| `email_shipment_tracking` | `call_id`, idempotency key, `order_candidate_token`, both order-confirmation booleans, `order_verified`, `shipment_email_requested` |
-| `create_support_case` | `call_id`, idempotency key, constant `primary_route=existing_order`, `order_candidate_token` when present, caller name, confirmed phone, caller type, country when known, `support_summary`, `support_summary_confirmed`, and optional preference/photo/urgency context |
-| `suppress_phone_number` | `call_id`, idempotency key, `dnc_phone`, `dnc_confirmed` |
-
-The shipment-email backend resolves the actual destination from the order
-candidate token. The support backend determines internal routing and internal
-email recipients. Internal sender/recipient and transactional-message routing
-is typed product source configuration, not environment configuration. Retell
-never supplies either recipient address.
-
-## Main Canvas
-
-Build the main canvas in this order. Component result nodes write their status
-variables before returning to the main flow.
+## Current Main Flow
 
 ```mermaid
 flowchart TD
-    A["C_Greet_And_Classify"] --> X["X_Primary_Route"]
-    X --> R{"L_Primary_Route"}
+    NAME["C_Greet_Name"] --> A["C_Greet_And_Route"]
+    A -->|"new project"| N["C_New_Project_Help"]
+    A -->|"existing order"| OV["Order Verification"]
 
-    R -->|"new project"| N["C_New_Project_Help"]
-    N -->|"answered"| CLOSE["Caller-safe close"]
-    N -->|"follow-up"| NC["Component: Contact Lookup — new-project instance"]
-    NC --> NR{"L_New_Project_Contact"}
-    NR -->|"not found"| P["Component: Prospect Follow-Up"]
-    NR -->|"found / ambiguous"| CB["Component: Callback"]
+    N -->|"answered"| END["E_Call_Complete"]
+    N -->|"follow-up needed"| NC["Contact Lookup"]
+    NC --> NR{"Contact result"}
+    NR -->|"not found"| P["Prospect Follow-Up"]
+    NR -->|"found or ambiguous"| CB["Callback"]
+    NR -->|"technical fallback"| P
 
-    R -->|"existing order"| EC["Component: Contact Lookup — existing-order instance"]
-    EC --> OV["Component: Order Verification"]
-    OV --> VR{"L_Order_Verified"}
-    VR -->|"verified"| OH["C_Order_Help"]
-    VR -->|"not verified"| SU["Component: Tracked Support"]
-    OH --> OR{"L_Order_Help_Outcome"}
-    OR -->|"direct answer"| CLOSE
-    OR -->|"shipment"| SH["Component: Shipment"]
-    OR -->|"unresolved"| SU
+    OV --> VR{"Verified?"}
+    VR -->|"yes"| RI{"Already-stated request"}
+    VR -->|"no"| SC["Contact Lookup"]
+    RI -->|"shipment"| SH
+    RI -->|"support"| SC
+    RI -->|"other or unstated"| OH["Existing-order help"]
+    OH -->|"answered"| END
+    OH -->|"shipment"| SH["Shipment"]
+    OH -->|"unresolved"| SC
+    SC --> SU["Tracked Support"]
+    SH --> END
 
-    GH["Global: Human Request"] -->|"named employee"| TR["Component: Named Employee Transfer"]
-    GH -->|"generic / department"| HF{"Primary route fallback"}
-    TR -->|"lookup failure"| HF
-    TR -->|"connection failure"| TF["C_Transfer_Unavailable"]
-    TF --> HF
-    HF -->|"new project"| CB
-    HF -->|"existing order"| SU
-    HF -->|"not classified"| A
-    GD["Global: Do Not Call"] --> DNC["Component: DNC"]
-    GE["Global: End / Wrong Number"] --> CLOSE
+    GH["Global: Human Request"] -->|"named employee"| TR["Named Employee Transfer"]
+    GH -->|"generic request"| BACK["Return to current path"]
+    TR -->|"declined / unavailable / failed"| TF{"Resume normal gates"}
+    TF -->|"verified order"| OH
+    TF -->|"unverified existing order"| OV
+    TF -->|"new project"| N
 
-    P --> CLOSE
-    SH --> CLOSE
-    SU --> CLOSE
-    CB --> CLOSE
-    DNC --> CLOSE
-    CLOSE --> OUT["X_Final_Call_Outcome"]
-    OUT --> END["E_Call_Complete"]
+    GD["Global: Do Not Call"] --> DNC["DNC"]
+    P --> END
+    CB --> END
+    SU --> END
+    DNC --> END
 ```
 
-| Node | Type | Required behavior and outgoing edges |
-| --- | --- | --- |
-| `C_Greet_And_Classify` | Conversation; start node | Use the approved begin message. Let the caller answer naturally. Prompt edges: new project → `X_Primary_Route`; existing order → `X_Primary_Route`; Else stays and asks one focused clarification. |
-| `X_Primary_Route` | Extract DV | Write `primary_route`. Always → `L_Primary_Route`. |
-| `L_Primary_Route` | Logic Split | `new_project` → `C_New_Project_Help`; `existing_order` → Contact Lookup component; Else → `C_Clarify_Request`. |
-| `C_Clarify_Request` | Conversation | If the primary route is not known, ask whether this is a new project or existing order. Then identify a verified answer or the route's one follow-up outcome. Do not invent a department or tool. |
-| `X_Capability_Gap` | Extract DV | Write `capability_gap_summary`. Always → `L_Capability_Gap`. |
-| `L_Capability_Gap` | Logic Split | `primary_route == new_project` → Callback; `primary_route == existing_order` → Tracked Support; Else → `C_Greet_And_Classify`. |
-| `C_New_Project_Help` | Conversation + approved KB | Answer approved public/product knowledge. Prompt edge when fully answered → `C_Close_Answered`; prompt edge when information must be answered later → Contact Lookup. |
-| `L_New_Project_Contact` | Logic Split after Contact Lookup | `not_found` → Prospect Follow-Up. `found` or `ambiguous` → Callback when follow-up is needed. Error → safe failure close. |
-| `L_Prospect_Component_Result` | Logic Split after Prospect Follow-Up | `prospect_followup_status == sent` → caller-safe prospect close; Else → tool-failure close. |
-| `L_Existing_Contact` | Logic Split after Contact Lookup | All outcomes continue to Order Verification. Salesforce context does not replace or block WooCommerce verification. |
-| `L_Order_Verified` | Logic Split after Order Verification | `order_verified == true` → `C_Order_Help`; Else → Tracked Support without speaking protected order details. |
-| `C_Order_Help` | Conversation | Ask how the agent can help. If the caller already explained the issue, repeat it back instead. Use prompt edges to `X_Order_Help_Outcome`. |
-| `X_Order_Help_Outcome` | Extract DV | Write one of the three `order_help_outcome` values. Always → `L_Order_Help_Outcome`. |
-| `L_Order_Help_Outcome` | Logic Split | Route to direct answer, Shipment, or Tracked Support. Else → `C_Clarify_Request`. Existing-order callback is not an edge. |
-| `C_Order_Direct_Answer` | Conversation | Speak only verified WooCommerce data or approved knowledge. Never infer ETA, delivery, approval, inventory, or an outcome. Then → `C_Close_Answered`. |
-| `L_Shipment_Result` | Logic Split after Shipment component | `shipment_lookup_status == found` and email declined/not requested → answered close; `shipment_email_status == sent` → answered close; `shipment_unavailable` → Tracked Support; Else → tool-failure close. |
-| `L_Support_Result` | Logic Split after Tracked Support component | `case_write_status == created OR created_notice_failed` → `C_Close_Support_Followup`; validation/error → safe tool-failure close without claiming follow-up was recorded. |
-| `L_Callback_Component_Result` | Logic Split after Callback component | `callback_status == scheduled` → `C_Close_Callback`; otherwise → `C_Close_Tool_Failure`. |
-| `L_DNC_Component_Result` | Logic Split after DNC component | `dnc_status == suppressed OR already_suppressed` → `C_Close_DNC`; otherwise → tool-failure close. |
-| `C_Transfer_Unavailable` | Conversation | Tell the caller the connection could not be completed, then return to the primary-route fallback. Do not claim the employee declined or is unavailable. |
-| `C_Close_Answered` | Conversation | Briefly summarize the verified answer and close naturally. Then → `X_Final_Call_Outcome`. |
-| `C_Close_Callback` | Conversation | Confirm only the accepted date, Mountain time, and callback number. Never mention internal email. Then → `X_Final_Call_Outcome`. |
-| `C_Close_Support_Followup` | Conversation | Say the customer service team will respond by the end of the next business day. Never say case or ticket, and do not offer an appointment time. Then → `X_Final_Call_Outcome`. |
-| `C_Close_DNC` | Conversation | Confirm the do-not-call request was handled only after `suppressed` or `already_suppressed`. Then → `X_Final_Call_Outcome`. |
-| `C_Close_Tool_Failure` | Conversation | Do not claim the action succeeded. Apologize briefly and preserve the requested context for QA. Then → `X_Final_Call_Outcome`. |
-| `X_Final_Call_Outcome` | Extract DV | Write exactly one `call_outcome` enum from the completed path and tool statuses. Always → `E_Call_Complete`. Transfer success is recorded from Retell's transfer result because the original graph does not resume. |
-| `E_Call_Complete` | End | End only after the caller-facing result or next step has been stated. |
+The start node asks only for the caller's name. The next node asks whether the
+call concerns a new project or existing order. That routing node handles its
+own clarification.
 
-## Agent-Local Components
+`C_New_Project_Help` must try to answer from approved knowledge before
+follow-up. Existing-order calls verify the WooCommerce order before Salesforce
+contact lookup. The order subagent uses one handoff sentence—“Great. What can I
+help you with?”—without separately announcing verification. A silent branch
+immediately after the shared-component exit routes any request answered during
+that handoff. This boundary is required because Retell can receive the caller's
+answer before the shared component has finished exiting. The existing-order
+help node handles other requests and asks the open help question only when the
+subagent did not already do so.
+Salesforce phone/email lookup runs only when customer-service support is
+needed. It never blocks shipment answers or collects contact information for a
+shipment-only call.
 
-### Confirm Contact And Look Up Salesforce
+Each focused subagent owns its tool result and caller-safe success or failure
+language. Successful components and answered conversations go directly to the
+Retell end node, which owns the single goodbye. The main canvas branches only
+when the result changes the next business path.
 
-Use this component only when CRM context or follow-up information is needed.
-Simple public questions do not require contact collection.
+## Shared Components
 
-1. `C_Confirm_Caller_Number`: Offer `{{user_number}}` as the lookup number and
-   ask whether it is correct. If not, collect the replacement. Collect name or
-   email only when useful for the pending outcome.
-2. `X_Contact_Details`: Write `confirmed_phone`, `caller_name`, and
-   `caller_email` when supplied.
-3. `C_Read_Back_Contact`: Confirm the minimum lookup fields; correction loops
-   to the collection node.
-4. `F_Lookup_Contact`: Call `lookup_contact`; map status and opaque contact
-   token. Do not announce Salesforce use or its result.
-5. `L_Contact_Result`: Every recognized result exits the component. Else maps
-   to `error` and exits.
+Every component below is one focused Subagent plus one exit. The Subagent owns
+fact capture, corrections, confirmation, its narrowly scoped tools, and the
+caller-safe result. Backend schemas, idempotency, order-reference validation,
+quote exclusion, and write guards remain authoritative.
 
-### Verify WooCommerce Order
+### Contact Lookup
 
-This component implements the required existing-order verification gate.
+Reuse `confirmed_phone` when it already exists. Otherwise, ask whether the
+number ending in the last four digits of `{{user_number}}` is the best number
+for GenStone to use. Do not read the full caller-ID number. Accept at most one
+replacement and do not read it back. Caller ID alone is not confirmation.
+The Contact Lookup Subagent calls the silent phone lookup once. If it returns
+`not_found` or `ambiguous`, it asks for and confirms email once, then calls the
+silent email lookup. Do not request email after a technical lookup error or
+announce Salesforce. For existing orders this component runs only immediately
+before Tracked Support, never before order verification or shipment handling.
+When phone lookup finds a unique contact, do not announce that internal result.
+Ask for and confirm the email already required by the follow-up path, then
+continue. This prevents a lookup-only turn from becoming caller-facing CRM
+narration.
 
-1. `F_Lookup_Order_By_Phone`: Use `confirmed_phone`, falling back to the
-   caller-confirmed `{{user_number}}`. Set identifier type `caller_phone`.
-2. `L_First_Order_Lookup`: `found` → candidate confirmation; `not_found` or
-   `ambiguous` → alternate identifier; validation/error → alternate identifier.
-3. `C_Collect_Alternate_Order_Identifier`: Ask for a different phone number or
-   numeric WooCommerce order number. Do not ask for both. A retailer, store,
-   Pro Desk, PO, or CPO number that is not the WooCommerce order number is
-   context only and cannot be used as a lookup or verification factor.
-4. `X_Alternate_Order_Identifier`: Write identifier type and value.
-5. `F_Lookup_Order_By_Alternate`: Make one bounded second lookup.
-6. `L_Second_Order_Lookup`: `found` → candidate confirmation; all other results
-   set `order_verified=false` and exit to normal follow-up.
-7. `C_Confirm_Order_Candidate`: State the caller-safe item summary and ask the
-   caller to confirm it. Ask the caller to confirm the masked order-email hint;
-   never volunteer a full email address.
-8. `X_Order_Confirmation`: Write the two confirmation booleans and
-   `order_verified`. True requires both confirmations. A correction returns to
-   alternate identifier; a denial exits unverified.
-9. `L_Order_Confirmation`: Explicit true → exit verified. Else → exit
-   unverified.
+### Order Verification
 
-`lookup_order` returns `order_candidate_token`; it does not declare the caller
-verified. Every downstream order, shipment, or support function receives the
-candidate token plus `order_verified=true`, and the backend fails closed when
-verification is absent.
+Confirm the order phone using only the caller-ID number's last four digits,
+then use the confirmed phone for the first lookup. If the result is `not_found`,
+`ambiguous`, or `validation_failed`, ask once for either another phone or
+the GenStone order number and make one second lookup. A technical error does
+not justify requesting another identifier.
 
-Retailer-context orders use this same component. If the normal phone or numeric
-WooCommerce order lookup does not find a verifiable record, exit unverified to
-Tracked Support. Do not add a retailer-specific node, tool, or portal
-integration.
+Caller-supplied phones and order numbers are normal strict custom-tool
+arguments. Do not bind them to dynamic-variable constants that may still be
+unset inside the same Subagent turn. Retell sends the caller-confirmed value
+directly; the Subagent also captures the confirmed phone for later shipment or
+support tools.
 
-### Send Prospect Follow-Up
+The Order Verification Subagent says, “Thank you. Just give me a moment to look
+up your order,” and owns the silent primary, alternate, and next-candidate
+tools. Do not create separate announcement, extraction, function, or branch
+nodes for each candidate turn.
 
-This component is valid only when `primary_route == new_project` and Salesforce
-contact lookup returned `not_found`.
+After item confirmation, it says only “Great. What can I help you with?” and
+waits for the caller. It does not say that the order was verified. The silent
+main-flow branch after component exit treats delivery timing—including how long
+samples will take to arrive—as shipment and invokes the verified shipment tool
+instead of answering from generic public shipping guidance.
 
-1. `C_Collect_Project_Context`: Collect the minimum useful project summary and
-   optional ZIP. Do not conduct a quote or create a CRM record.
-2. `X_Project_Context`: Write the summary and ZIP.
-3. `C_Confirm_Project_Context`: Read back the contact and short summary.
-4. `X_Prospect_Confirmation`: Write `prospect_confirmed`; correction returns
-   to collection and decline exits without sending.
-5. `F_Send_Prospect_Followup`: Call `send_prospect_follow_up` only when
-   `prospect_confirmed=true`.
-6. `L_Prospect_Write_Result`: Store the returned status and exit the Component.
-   Never mention the internal recipient.
+Exclude quote-status drafts from phone and exact order-number lookup. For a
+candidate, identify a stored sample order or explicitly signaled retail order,
+then use a fixed sentence that speaks the safe item summary once and asks
+whether it matches. Use natural quantities such as “Chicago” or “20 units of
+Chicago Panel,” never the multiplication symbol. Verification is true when the
+items match. Email is not part of universal order verification.
 
-### Handle Shipment Request
+If the caller rejects the first candidate, ask for the GenStone order number
+once. If the caller has no order number, remember that answer and never ask for
+it again during the call. Continue through the remaining recent non-quote
+phone-matched orders until one is confirmed or none remain, then use the
+unresolved-order support path. A rejected candidate is never attached to
+Zendesk. When the caller already clearly stated the unresolved issue, reuse it
+instead of asking for another description.
 
-1. `F_Lookup_Shipment`: Require `order_verified=true` and the candidate token.
-2. `L_Shipment_Lookup`: `found` → shipment answer; `shipment_unavailable` →
-   Tracked Support; Else → tool-failure result.
-3. `C_Shipment_Answer_And_Email_Offer`: Speak only the returned safe summary.
-   If the caller asked when it will arrive, clearly distinguish stored tracking
-   information from an unavailable live ETA. Offer the shipment email.
-4. `X_Shipment_Email_Request`: Write `shipment_email_requested`.
-5. `L_Shipment_Email_Request`: False → exit successfully after spoken answer;
-   true → email confirmation.
-6. `C_Confirm_Order_Email_For_Shipment`: Confirm the masked order email. Do not
-   accept an alternate recipient.
-7. `X_Shipment_Email_Confirmation`: Update `order_email_confirmed`.
-8. `L_Shipment_Email_Confirmation`: True → send; false → return to confirmation
-   or exit without sending.
-9. `F_Email_Shipment_Tracking`: Call `email_shipment_tracking`. The backend
-   resolves the actual recipient from the verified order token.
-10. `L_Shipment_Email_Result`: `sent` → confirm the email was requested
-    successfully; delivery failure/error → do not claim it was sent.
+### Prospect Follow-Up
 
-### Create Tracked Support
+For an unmatched new-project caller, collect the confirmed email and only the
+minimum missing project context, then call `send_prospect_follow_up` once the
+request is clear. Do not ask for ZIP unless volunteered, repeat other contact
+details, or require a formal project-summary confirmation. This is internal
+follow-up, not CRM creation.
 
-This single component covers returns, warranties, claims, damage, missing or
-wrong items, and other matters requiring owned resolution.
+### Shipment
 
-1. `C_Collect_Support_Summary`: Collect a short factual summary. Do not ask
-   about photos by default. Preserve volunteered photo availability and
-   communication preference as ordinary context.
-2. `X_Support_Summary`: Write summary and optional context.
-3. `C_Confirm_Support_Summary`: Confirm the factual issue summary, not the
-   internal action.
-4. `X_Support_Confirmation`: Write `support_summary_confirmed`; correction
-   returns to collection and decline exits without writing.
-5. `F_Create_Support_Case`: Call `create_support_case` only when
-   `support_summary_confirmed=true`. The backend assigns the Support group with
-   no individual assignee, normal priority, native Type `Question`, Ticket Type
-   `Answering Service`, and explicit tag `answer_connect`. Populate Customer
-   Name, Phone, caller type, and Country when known; field option values supply
-   sortable tags such as `answering_service` and `customer`. The backend sends
-   the required internal case-created email after the ticket is created. The
-   component never searches, compares, selects, or updates an earlier ticket.
-6. `L_Case_Write_Result`: `created` → support-follow-up close.
-   `created_notice_failed` still means the support ticket
-   exists; use the same caller language and let the backend retry/alert
-   internally. Validation/error → safe failure without scheduling a Callback.
+Call `lookup_shipment` immediately; never ask for a tracking number. Speak only
+the concise returned summary and never read tracking numbers aloud. Offer to
+email the complete tracking details. Only if accepted, ask which email address
+to use, confirm that destination once, then call `email_shipment_tracking`.
 
-At launch, Zendesk uses an internal integration/service requester, private
-comments, and no customer-facing Zendesk notifications. Keep requester mode,
-comment visibility, and notification behavior centrally configurable so a
-later business decision does not require a Retell-flow change. The Retell
-component never intentionally sends a customer support email.
-The caller-facing close states that customer service responds by the end of the
-next business day. This is an SLA-style expectation, not a callback booking.
+### Tracked Support
 
-### Schedule Centralized Callback
+The Tracked Support Subagent reuses the caller's existing issue, identity, and
+verified order context. It asks one open question only when the issue is still
+unclear. For unexplained damage, respond empathetically and ask “What was
+broken?” It confirms email only when missing, captures the short factual
+summary, and calls `create_support_case` once. Never repeat order items or
+attach rejected order context.
 
-This component is valid only when `primary_route == new_project`. The backend
-must reject attempts to schedule an existing-order callback.
+After a successful write, use one fixed caller-facing sentence: “I'm letting
+our team know, and they'll be in touch as soon as possible.” Do not read a
+summary back, repeat order items or contact details, expose internal case
+terminology, or add another support questionnaire.
 
-1. `C_Collect_Callback_Request`: Propose a broad subject based on the existing
-   conversation and let the caller correct it. Collect preferred day, time, and
-   callback phone. Earliest is next business day; Monday-Friday, 8:30 AM-4:30
-   PM Mountain time; standard U.S. federal holidays are unavailable.
-2. `X_Callback_Request`: Write subject, summary, date, time, phone,
-   communication preference, and factual urgency context.
-3. `C_Confirm_Callback_Request`: Read back subject, date, Mountain time, and
-   phone. Do not offer or promise a particular coordinator.
-4. `X_Callback_Confirmation`: Write `callback_confirmed`.
-5. `L_Callback_Confirmation`: True → schedule; correction → collection; decline
-   → exit without scheduling.
-6. `F_Schedule_Callback`: Call `schedule_callback` with the bound constant
-   `primary_route=new_project`.
-7. `L_Callback_Write_Result`: `scheduled` → success exit;
-   `invalid_day_or_time` → collection; delivery/error → failure exit.
+The backend creates a new private Zendesk answering-service ticket and sends
+the internal case-created email. This is not a customer email. The backend does
+not search for, select, or update an older ticket. The Zendesk ticket id is
+stored in internal execution and outcome records but is removed from the tool
+response returned to Retell.
 
-Customer.io sends this request internally. The application does not send the
-caller a callback confirmation email.
+If the Zendesk write fails, say specifically that the information could not be
+sent to customer service. Do not use the generic phrase “unable to complete
+that request” and do not claim that follow-up was created.
 
-### Resolve Named Employee And Transfer
+### Callback
 
-Enter only when the caller independently supplies an employee name.
+This component is new-project only. Reuse the already-confirmed phone; ask for
+one only when none exists. Collect the confirmed email, broad subject,
+preferred weekday/date, and Mountain time from 8:30 AM through 4:30 PM. The
+earliest date is the next business day, excluding U.S. federal holidays.
+Confirm the subject, date, time, use of the confirmed number, and email once.
+After the caller approves, call `schedule_callback`. Do not repeat the details
+again in the closing, promise a coordinator, or send a customer confirmation
+email.
 
-1. `X_Requested_Employee`: Write `requested_employee_name` from what the caller
-   already said. Do not ask a generic human requester to choose a person.
-2. `F_Lookup_Active_Employee`: Call `lookup_active_employee`.
-3. `L_Employee_Result`: `found` → transfer confirmation; `not_found`,
-   `ambiguous`, `missing_number`, or `error` → primary-route fallback.
-4. `C_Confirm_Named_Transfer`: Confirm the safe display name and ask whether to
-   transfer. Do not say the employee is available.
-5. `X_Transfer_Confirmation`: Write `transfer_confirmed`.
-6. `L_Transfer_Confirmation`: True and `{{call_type}} == "phone_call"` →
-   transfer; false → return to prior help; web-call handling is out of scope.
-7. `T_Named_Employee`: Set destination to
-   `{{employee_transfer_target}}`. Never speak or display the target in a
-   Conversation node. Configure **standard warm transfer**, human detection,
-   auto-greeting, and a private whisper to the employee before the caller is
-   bridged. Use Retell's default 30-second human-detection timeout. Set the
-   transfer caller ID to **User's Number** so the Twilio transfer presents the
-   customer's number to the employee. Keep three-way introduction off unless
-   separately approved.
-8. The private whisper should identify this as a GenStone call, give the
-   matched employee name, and include only the caller's name and broad topic
-   when known. Do not whisper full order, email, payment, or other unnecessary
-   sensitive details.
-9. Connect the built-in transfer-failure edge to
-   `C_Transfer_Unavailable`. After telling the caller the connection could not
-   be completed, enter the primary-route fallback with the conversation context
-   preserved.
+### Named Employee Transfer
 
-Do not create separate transfer nodes per employee. A Salesforce lookup
-failure goes directly to the primary-route fallback; an attempted connection
-failure first uses `C_Transfer_Unavailable` so the caller understands why the
-original transfer was not completed.
+Use only when the caller independently names an employee. Always call
+`lookup_active_employee`, including on web calls.
 
-GenStone uses Twilio. Retell supports presenting the customer's number on a
-Twilio warm transfer when caller ID is set to **User's Number**. Verify the
-display with one live transfer test before launch.
+- Employee lookup is restricted server-side to active Salesforce Users in the
+  GenStone, GenStone Manager, or GenStone Remote Access profiles who have a
+  direct phone number.
+- The same Subagent performs lookup for every channel. A web call explains
+  that the channel cannot make a live connection and returns to normal help.
+- A phone call with one active match confirms the safe employee name and asks
+  permission before invoking its owned transfer tool.
+- The transfer is standard warm, uses human detection, plays the private
+  whisper when connected, and shows the caller's number to the employee.
+- Lookup failure, caller decline, unsupported channel, or transfer failure
+  returns to normal new-project help/callback or existing-order support.
+- Never speak the direct number or imply that the employee declined.
 
-### Record Do-Not-Call
+### DNC
 
-1. `C_Confirm_DNC_Number`: Confirm `{{user_number}}`, or collect the specific
-   number the caller wants suppressed.
-2. `X_DNC_Request`: Write `dnc_phone` and `dnc_confirmed`.
-3. `L_DNC_Confirmation`: True → suppress; correction → confirmation; false →
-   return or close without writing.
-4. `F_Suppress_Phone`: Call `suppress_phone_number`.
-5. `L_DNC_Write_Result`: Store the returned status and exit the Component. The
-   main-canvas result split decides whether success may be stated.
-
-This component writes only to Five9 and never creates a CRM or Zendesk record.
+Confirm the exact phone and the do-not-call request once, then call
+`suppress_phone_number`. Frustration alone is not consent to suppress a
+number.
 
 ## Global Nodes
 
-Configure these as global-enabled Conversation nodes. Add positive and negative
-fine-tuning examples and enable the default three-step immediate re-trigger
-prevention where a caller can return to the prior flow.
+- Human request: a named employee uses Named Employee Transfer. A generic
+  request does not prompt the caller to choose a person or department and does
+  not jump around the verification or routing gates. The agent returns to the
+  current business path and continues helping.
+- Do not call: enter DNC only for an explicit suppression request.
+- End or wrong number: close and end without creating work.
 
-| Global node | Trigger | Behavior |
-| --- | --- | --- |
-| `G_Human_Request` | Caller clearly asks for a human, employee, or department | If the caller already names an employee, enter Named Employee Transfer. Otherwise follow `primary_route`: new project → Callback; existing order → Tracked Support; not classified → opening classification. Do not ask a generic requester to choose a name or department. Enable return-to-previous when the caller changes their mind and asks the agent to continue. |
-| `G_Do_Not_Call` | Caller explicitly asks GenStone to stop calling or remove a number | Enter DNC confirmation. Do not treat frustration alone as DNC. No return-to-previous after successful suppression. |
-| `G_End_Call` | Caller clearly wants to end the call or says it is a wrong number | Close politely and end. Do not trigger from a pause, uncertainty, or background speech. |
-
-Silence is not a global node. Configure Retell's silence reminders and end-call
-setting separately.
+Silence reminders and silence hang-up behavior remain agent settings, not
+global nodes.
 
 ## Knowledge Base Placement
 
@@ -543,7 +378,7 @@ An unset value means Retell's default; do not invent a numeric override.
 | Voice model | Retell default | Leave unset. |
 | Voice temperature | `1` | Copy the GenSteel baseline. |
 | Voice speed / volume | `1` / `1` | Copy the GenSteel baseline. |
-| Default LLM | Cascading `gpt-5.2`, high priority | Use for every node initially; no per-node override until a specific failure is demonstrated. |
+| Default LLM | Cascading `gpt-5.5`, high priority | Use for every node initially; no per-node override until a specific failure is demonstrated. |
 | LLM temperature | `0.2` | Keep stable and low-variance. |
 | Responsiveness | `0.7` | Copy the GenSteel baseline, then test with normal and slower callers. |
 | Interruption sensitivity | `0.6` | Copy the GenSteel baseline, then test against store and call-center background speech. |
@@ -595,6 +430,7 @@ beyond approved policy.
 
 The Retell-specific behavior in this specification follows the official guides
 for [Conversation Flow](https://docs.retellai.com/build/conversation-flow/overview),
+[Subagent nodes](https://docs.retellai.com/build/conversation-flow/node),
 [Function nodes](https://docs.retellai.com/build/conversation-flow/function-node),
 [custom functions and response variables](https://docs.retellai.com/build/conversation-flow/custom-function),
 [dynamic variables](https://docs.retellai.com/build/dynamic-variables),
@@ -609,20 +445,19 @@ for [Conversation Flow](https://docs.retellai.com/build/conversation-flow/overvi
 | --- | --- |
 | Opening | New project, existing order, ambiguous answer, and caller starts by explaining the whole problem |
 | Public knowledge | Approved answer succeeds; unsupported product question routes to follow-up without guessing |
-| Salesforce contact | Found, not found, ambiguous, and error; existing-order route continues to WooCommerce in every case |
-| Order verification | Caller number match; alternate phone; order number; no match; wrong items; wrong email; both confirmations required |
-| Order privacy | Agent never reveals full email, another order, opaque tokens, or status before verification |
-| Shipment | Speak stored details; no stored shipment; caller declines email; caller accepts email; attempted alternate recipient; delivery failure |
-| Support | Every confirmed unresolved existing-order call creates one new private ticket; created notice succeeds; `created_notice_failed`; write error does not schedule callback; Support group; no assignee; Type `Question`; Ticket Type `Answering Service`; `answer_connect`, `answering_service`, and caller-type tags; Customer Name, Phone, caller type, and Country mapping; end-next-business-day wording |
-| Photos | Caller volunteers photos; agent records context but does not invent an upload link or separate path |
+| Salesforce contact | New-project found, not found, ambiguous, and error; existing-order shipment does not request Salesforce email; existing-order support performs phone-first lookup and email fallback before Zendesk |
+| Order verification | Caller number match; replacement phone without read-back; exact non-quote order number; quote excluded; no match; wrong items; item confirmation required; technical error does not request another identifier |
+| Order privacy | Agent never reveals another order, opaque tokens, status before verification, mask characters, JSON, tool arguments, field names, or software provider names |
+| Shipment | Speak concise status without tracking numbers; no stored shipment; caller declines email; caller accepts and confirms a destination email; delivery failure |
+| Support | Every unresolved existing-order request creates one new private ticket without repeating contact details or requiring a summary read-back; created notice succeeds; `created_notice_failed`; write error does not schedule callback; Support group; no assignee; Type `Question`; Ticket Type `Answering Service`; `answer_connect`, `answering_service`, and caller-type tags; Customer Name, Phone, inferred caller type, volunteered Country mapping; end-next-business-day wording |
 | Callback | Next business day; reject same day, weekend, holiday, before 8:30, and after 4:30 Mountain; correct phone; declined confirmation; email failure |
-| Human request | Generic human request follows the primary route without asking for a department: new project → Callback; existing order → Zendesk |
+| Human request | Generic human request returns to the current path without asking for a department; failed named transfer resumes normal new-project or existing-order gates without jumping directly to Callback or Zendesk |
 | Named transfer | Active unique employee success with private whisper; inactive/not found; ambiguous; missing number; caller declines; warm-transfer timeout/failure returns to the agent; Twilio displays customer-number caller ID; web-call fallback |
 | DNC | Caller number; different number; caller correction; already suppressed; failure; frustration that is not a DNC request |
 | Unsupported request | New-project Callback or existing-order Zendesk is used and capability gap is captured; no new tool is improvised |
 | Tool integrity | Timeout, malformed result, missing response variable, interruption during write, and duplicate write never produce false success |
 | Retailer orders | Normal WooCommerce record by phone or numeric order succeeds; retailer/PO/CPO-only identifier remains context; unmatched existing order uses Zendesk without claiming retailer-system access |
-| Scope guard | SMS preference, support photos, receipt/payment request, and call-history question do not create new scenarios |
+| Scope guard | SMS preference, receipt/payment request, and call-history question do not create new scenarios |
 
 Test transfers on a phone call; Retell's Call Transfer node does not operate in
 web calls. For every Logic Split, test the Else edge. For every Conversation
@@ -633,21 +468,26 @@ or synthetic call language.
 
 - [ ] The main start node and all Component Begin/Exit connections are valid.
 - [ ] Flex Mode is off and tool-call strict mode is on.
-- [ ] Every Function node waits for its result.
-- [ ] Every tool status is mapped from `result_code` and has an Else/error edge.
-- [ ] Every write is confirmed and idempotent.
-- [ ] No order result is spoken before both verification confirmations.
-- [ ] The shipment email resolves only to the verified order email.
+- [ ] Every shared responsibility is one focused Subagent plus one exit unless
+      an explicit atomic-boundary exception is documented.
+- [ ] Each tool execution has one speaking owner and no duplicate graph-level
+      announcement.
+- [ ] Every tool status is mapped from `result_code` and handled inside its
+      responsible Subagent or a business-changing main branch.
+- [ ] Every write is idempotent. Callback scheduling, shipment email, transfer,
+      and DNC require caller approval; prospect and support internal follow-up
+      use the caller's request as authorization without another ceremony.
+- [ ] No order result is spoken before the caller confirms the candidate items.
+- [ ] The shipment email resolves to the complete destination the caller confirmed.
 - [ ] Zendesk creation also triggers the internal case-created email.
 - [ ] Existing-order follow-up never asks for a callback day or time.
 - [ ] Zendesk receives the confirmed sorting fields and tags, and the caller is
-      told customer service responds by the end of the next business day.
+      told the team will be in touch as soon as possible.
 - [ ] Generic human requests do not solicit an employee or department.
 - [ ] The named transfer uses standard warm transfer, human detection, and the private employee whisper.
 - [ ] The transfer caller-ID setting is **User's Number** and a live Twilio test confirms what the employee sees.
-- [ ] The named transfer failure edge reaches `C_Transfer_Unavailable`, tells
-      the caller the connection failed, and then returns to the primary-route
-      fallback.
+- [ ] The named-transfer Subagent tells the caller when connection fails and
+      returns to the primary-route fallback.
 - [ ] No SMS, MCP, Code, Press Digit, Agent Transfer, payment, or upload-link node exists.
 - [ ] Only approved knowledge is attached to answer nodes.
 - [ ] The complete test matrix passes in draft and the published version is

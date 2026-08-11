@@ -12,10 +12,10 @@ const target = {
 };
 
 describe("Retell simulation suite", () => {
-  it("defines nine tests against the pinned draft flow", () => {
+  it("defines ten tests against the pinned draft flow", () => {
     const definitions = buildRetellSimulationDefinitions(target);
 
-    expect(definitions).toHaveLength(9);
+    expect(definitions).toHaveLength(10);
 
     for (const definition of definitions) {
       expect(definition.response_engine).toEqual({
@@ -54,7 +54,7 @@ describe("Retell simulation suite", () => {
   });
 
   it("checks required and forbidden tools deterministically", () => {
-    const name = "GenStone v5 — Verified shipment email accepted";
+    const name = "GenStone v35 — Verified shipment email accepted";
     const correctTranscript = [
       { role: "tool_call_invocation", name: "lookup_contact" },
       { role: "tool_call_invocation", name: "lookup_order" },

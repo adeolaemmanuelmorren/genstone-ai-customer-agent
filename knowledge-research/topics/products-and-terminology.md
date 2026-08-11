@@ -1,6 +1,6 @@
 # Products and Terminology
 
-> Draft pending business-owner approval. Website facts are supplemented by deidentified transcript needs; Zendesk findings have not yet been merged.
+> V1 candidate pending business-owner approval. Only supported, non-conflicting caller-facing facts are included. Deferred items remain in `../conflicts-and-open-questions.md`.
 
 ## What GenStone Is
 
@@ -31,17 +31,11 @@ The stone system advertises panels, 90-degree inside and outside corners, straig
 
 The five standard brick colors use nominal 24 by 11.25 inch panels with 1.88 square feet of listed coverage per panel. [Source](https://genstone.com/products/brick)
 
-| Color | Website description | Source |
-| --- | --- | --- |
-| Chicago | Rich burgundy with crimson undertones | [Source](https://genstone.com/products/brick/chicago) |
-| Classic | Natural clay with terracotta and cinnamon tones | [Source](https://genstone.com/products/brick/classic) |
-| Deep Red | Rich burgundy with crimson undertones | [Source](https://genstone.com/products/brick/deep-red) |
-| Multi Color | Traditional clay and rich crimson | [Source](https://genstone.com/products/brick/multi-color) |
-| White | White tones with natural shadows | [Source](https://genstone.com/products/brick/white) |
+The standard colors are Chicago, Classic, Deep Red, Multi Color, and White. [Source](https://genstone.com/products/brick)
+
+The current website describes Classic as natural clay with terracotta and cinnamon tones, Multi Color as traditional clay and rich crimson, and White as white tones with natural shadows. [Classic source](https://genstone.com/products/brick/classic) [Multi Color source](https://genstone.com/products/brick/multi-color) [White source](https://genstone.com/products/brick/white)
 
 The brick system advertises panels, inside and outside corners, straight and corner ledgers, trim, paint kits, and installation consumables. [Source](https://genstone.com/products/brick)
-
-The website gives Chicago and Deep Red the same color description. Treat those descriptions as unresolved rather than interchangeable. See the conflict log.
 
 ## Faux Wood Colors
 
@@ -71,7 +65,6 @@ Faux wood panels are molded from reclaimed barnwood textures and are marketed fo
 ## Pillars and Columns
 
 - GenStone uses **pillar** for the smaller post-wrap system. Current pillar panels list nominal dimensions of 11.25 by 24 inches and 1.88 square feet of coverage. [Source](https://genstone.com/products/pillars)
-- The system overview says pillar panels are intended for a square post no larger than 7.75 inches; another installation page describes the target as an 8-inch post. Treat 7.75 inches versus 8 inches as unresolved nominal wording. [Source](https://genstone.com/how-to-install/the-genstone-system) [Source](https://genstone.com/how-to-install/5-common-questions-solutions)
 - GenStone uses **column** for the larger system made from four stacked-stone outside corners around a nominal 17-inch square post. Each row provides 22.5 inches of height. Smaller posts can be furred out before installation. [Source](https://genstone.com/products/columns)
 - Flat and peaked caps are offered for both pillar and column systems. Column caps list 23 by 23 inches on the current category page. [Source](https://genstone.com/products/columns)
 
@@ -81,24 +74,12 @@ Faux wood panels are molded from reclaimed barnwood textures and are marketed fo
 - A current Bradford product page lists recessed or surface mounting, plug-in or 120-volt hardwired power, app/voice compatibility, and heat output up to 400 square feet for the reviewed 50-inch model. Exact features vary by model. [Source](https://genstone.com/products/fireplaces/bradford-50)
 - The Shaffer line currently lists a 40-inch electric fireplace. The reviewed product page describes recessed or surface mounting and heat output up to 400 square feet. [Source](https://genstone.com/products/fireplaces/shaffer-40)
 - The Bradford Fireplace Kit includes GenStone for a 53-inch-tall by 60-inch-wide feature, a Bradford 50-inch electric fireplace, instructions, and a framing-material list. Framing materials are not included. [Source](https://genstone.com/products/fireplace-kits/bradford-fireplace-kit)
-- The Shaffer Fireplace Kit includes GenStone, a Shaffer 40-inch electric fireplace, instructions, and a framing-material list; framing materials are not included. The current product page says the finished feature is 60 inches wide by 108 inches tall, while a design article says 65 inches wide by 108 inches tall. Width requires owner confirmation. [Product source](https://genstone.com/products/fireplace-kits/shaffer-fireplace-kit) [Conflicting source](https://genstone.com/insights/design-ideas/fireplace-surround-kits)
+- The Shaffer Fireplace Kit includes GenStone, a Shaffer 40-inch electric fireplace, instructions, and a framing-material list. Framing materials are not included. [Source](https://genstone.com/products/fireplace-kits/shaffer-fireplace-kit)
 
 ## Made-to-Order and Custom Color
 
 - Current product pages show made-to-order custom-color samples and matching panels or accessories for stone and brick. [Stone sample source](https://genstone.com/products/faux-stone-panels/custom-color/stacked-stone-custom-color-sample) [Brick sample source](https://genstone.com/products/brick/custom-color/brick-custom-color-sample)
-- An older website article describes a process involving an uploaded reference image, a digital rendering, and approval of a first physical panel before the remainder is produced. Current product pages do not restate that process, so it should not be promised without confirmation. [Source](https://genstone.com/how-to-install/5-sample-testing-tips)
 
 ## Common Applications
 
 Website sources describe use on accent walls, fireplace surrounds, foundations, chimneys, garage facades, porch columns, entryways, outdoor kitchens, basement feature walls, metal buildings, and full or partial exterior facades. Suitability still depends on the substrate, heat exposure, wall assembly, and product-specific instructions. [Source](https://genstone.com/faq/what-types-of-projects-can-genstone-be-used-for) [Source](https://genstone.com/insights/design-ideas/metal-building-siding)
-
-## Transcript-Driven Clarity Needs
-
-The 428 reviewed calls do not change the website facts above, but they show where terminology repeatedly fails customers. [Transcript evidence](../raw/transcripts/transcript-findings.md)
-
-- Product and channel pages should display the exact unit of sale, pieces per package, nominal dimensions, listed coverage per piece and package, and whether a displayed price includes a cap or multiple sides.
-- Use a visual component map to distinguish full/half panels, inside and outside corners, fingered corners, ledgers, ledger corners, trim, finished edges, wall caps, pillar panels, column corners, post caps, paint, caulk, and adhesive.
-- Correct common descriptions such as 4-by-8 sheets, flexible stone, vinyl brick siding, filler panels, and "ledger" used to mean field panels.
-- Fireplace-kit imagery should state which appliance, veneer, instructions, and framing list are included and which surrounding structure, framing material, fire-protection assembly, television, mantel, or labor is not included.
-- Faux wood wall panels should not be described as exterior log-cabin siding without a product-specific authoritative source.
-- For older-match requests, identify the original profile/color and warn that photos, screen color, aging, and lot variation cannot guarantee an exact match; physical samples are the safer comparison.

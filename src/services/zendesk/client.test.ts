@@ -10,6 +10,7 @@ const env = {
 
 const metadata = {
   customerName: "Test Caller",
+  customerEmail: "caller@example.com",
   phone: "+18085550101",
   callerType: "customer" as const,
   country: "united_states" as const,
@@ -40,10 +41,10 @@ describe("Zendesk answering-service tickets", () => {
       status: "new",
       group_id: 26_273_508,
       comment: { body: "Private call summary", public: false },
+      requester: { name: "Test Caller", email: "caller@example.com" },
       tags: ["answer_connect", "answering_service", "customer"],
     });
     expect(ticket).not.toHaveProperty("assignee_id");
-    expect(ticket).not.toHaveProperty("requester_id");
     expect(ticket.custom_fields).toEqual([
       { id: 27_432_028, value: "Test Caller" },
       { id: 81_047_148, value: "+18085550101" },

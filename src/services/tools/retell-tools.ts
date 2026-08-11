@@ -12,7 +12,10 @@ import type {
   VerifiedOrderInput,
 } from "../../schemas/retell-tools";
 import { failureResult, successResult, type ToolResult } from "../../types/tool-result";
-import { CUSTOMERIO_MESSAGES } from "../customerio/config";
+import {
+  CUSTOMERIO_MESSAGES,
+  resolveShipmentEmailRecipient,
+} from "../customerio/config";
 import { sendCustomerIoEmail } from "../customerio/client";
 import { suppressFive9Number } from "../five9/client";
 import {
@@ -32,9 +35,9 @@ import {
   getStoredShipment,
   getTrackingUrl,
   getWooOrder,
-  maskEmail,
   normalizeUsPhone,
 } from "../woocommerce/client";
+import type { WooOrderCandidate } from "../woocommerce/client";
 
 export async function lookupContactTool(
   env: CustomerAgentEnv,
@@ -114,7 +117,34 @@ export async function lookupOrderTool(
     return successResult("not_found", "No matching order was found.");
   }
 
-  const order = sortNewestOrder(matches)[0];
+  const actualOrders = sortNewestOrder(
+    matches.filter((candidate) => candidate.status !== "quote"),
+  );
+  const orderCandidates = actualOrders;
+  let order: WooOrderCandidate | undefined = orderCandidates[0];
+
+  if (input.previous_order_candidate_token) {
+    const previousOrder = await getOrderReference(
+      db,
+      getCompanyId(env),
+      input.call_id,
+      input.previous_order_candidate_token,
+    );
+    if (!previousOrder) {
+      return failureResult(
+        "validation_failed",
+        "The previous order candidate could not be validated.",
+      );
+    }
+
+    const previousIndex = orderCandidates.findIndex(
+      (candidate) => candidate.id === previousOrder.wooOrderId,
+    );
+    const nextIndex = previousIndex + 1;
+    order = previousIndex >= 0 && nextIndex < orderCandidates.length
+      ? orderCandidates[nextIndex]
+      : undefined;
+  }
   if (!order) {
     return successResult("not_found", "No matching order was found.");
   }
@@ -126,15 +156,14 @@ export async function lookupOrderTool(
     orderNumber: order.number,
     orderEmail: order.email,
     orderPhone: order.phone,
-    maskedEmail: maskEmail(order.email),
     items: order.items,
   });
 
   const itemSummary = summarizeItems(order.items);
   return successResult("found", "A candidate order was found and requires confirmation.", {
     order_candidate_token: reference.token,
+    order_type_summary: summarizeOrderType(order.metadata),
     order_item_summary: itemSummary,
-    order_email_masked: reference.maskedEmail,
     order_status_summary: order.status,
   });
 }
@@ -152,7 +181,10 @@ export async function lookupShipmentTool(
   const order = await getWooOrder(env, reference.wooOrderId);
   const shipment = getStoredShipment(order);
   if (!shipment) {
-    return successResult("shipment_unavailable", "No stored shipment details are available.");
+    const summary = summarizeUnavailableShipment(order.status);
+    return successResult("shipment_unavailable", summary, {
+      shipment_safe_summary: summary,
+    });
   }
 
   const summary = summarizeShipment(shipment);
@@ -193,7 +225,7 @@ export async function scheduleCallbackTool(
         priority: input.urgency_context ? "Context provided" : "Standard",
         caller_type: "GenStone caller",
         customer_name: input.customer_name,
-        customer_email: "",
+        customer_email: input.customer_email,
         requested_employee: "",
         order_or_project_references: "",
       },
@@ -218,7 +250,7 @@ export async function sendProspectFollowUpTool(
       messageData: {
         customer_name: input.customer_name,
         phone: input.confirmed_phone,
-        email: input.customer_email ?? "",
+        email: input.customer_email,
         description: input.project_summary,
         zip: input.postal_code ?? "",
         timing: "",
@@ -243,8 +275,8 @@ export async function emailShipmentTool(
   input: ShipmentEmailInput,
 ): Promise<ToolResult> {
   const reference = await requireVerifiedOrderReference(env, db, input);
-  if (!reference?.orderEmail) {
-    return failureResult("error", "The confirmed order email is unavailable.");
+  if (!reference) {
+    return failureResult("error", "Order verification could not be confirmed.");
   }
 
   const order = await getWooOrder(env, reference.wooOrderId);
@@ -256,18 +288,19 @@ export async function emailShipmentTool(
   try {
     const deliveryReference = await sendCustomerIoEmail(env, {
       transactionalMessageId: CUSTOMERIO_MESSAGES.shipmentDetails.transactionalMessageId,
-      recipient: reference.orderEmail,
+      recipient: resolveShipmentEmailRecipient(input.shipment_email),
+      blindCopyRecipient: CUSTOMERIO_MESSAGES.shipmentDetails.blindCopyRecipient,
       messageData: {
         order_number: reference.orderNumber,
         shipments: shipment.trackingNumbers.map((trackingNumber) => ({
-          carrier: shipment.carrier ?? "Carrier not stored",
+          provider: formatCarrierName(shipment.carrier) ?? "Carrier not stored",
           tracking_number: trackingNumber,
           tracking_url: getTrackingUrl(shipment.carrier, trackingNumber) ?? "",
           shipped_date: shipment.shippedDate ?? "",
         })),
       },
     });
-    return successResult("sent", "The stored shipment details were emailed to the confirmed order address.", {
+    return successResult("sent", "The stored shipment details were emailed to the confirmed address.", {
       external_reference: deliveryReference,
     });
   } catch {
@@ -280,7 +313,12 @@ export async function createSupportCaseTool(
   db: Queryable,
   input: SupportCaseCreateInput,
 ): Promise<ToolResult> {
-  const orderReference = input.order_candidate_token
+  const hasVerifiedOrder = Boolean(
+    input.order_candidate_token
+    && input.order_items_confirmed
+    && input.order_verified,
+  );
+  const orderReference = hasVerifiedOrder && input.order_candidate_token
     ? await getOrderReference(
       db,
       getCompanyId(env),
@@ -288,13 +326,14 @@ export async function createSupportCaseTool(
       input.order_candidate_token,
     )
     : undefined;
-  if (input.order_candidate_token && !orderReference) {
+  if (hasVerifiedOrder && !orderReference) {
     return failureResult("validation_failed", "The confirmed order reference could not be validated.");
   }
 
   const comment = buildPrivateSupportComment(input, orderReference?.orderNumber);
   const ticketMetadata = {
     customerName: input.customer_name,
+    customerEmail: input.customer_email,
     phone: input.confirmed_phone,
     callerType: input.caller_type,
     country: input.caller_country,
@@ -313,13 +352,12 @@ export async function createSupportCaseTool(
       messageData: {
         customer_name: input.customer_name ?? "",
         confirmed_phone: input.confirmed_phone ?? "",
-        customer_email: input.customer_email ?? "",
+        customer_email: input.customer_email,
         caller_type: input.caller_type ?? "",
         support_summary: input.support_summary,
         order_reference: orderReference?.orderNumber ?? "",
         communication_preference: input.communication_preference ?? "",
         urgency_context: input.urgency_context ?? "",
-        photo_context: input.photo_context ?? "",
         zendesk_case_id: ticket.id,
         request_reference: input.idempotency_key,
         call_reference: input.call_id,
@@ -329,13 +367,13 @@ export async function createSupportCaseTool(
     return {
       ...failureResult(
         "created_notice_failed",
-        "The support follow-up was created, but its internal notice could not be delivered.",
+        "The team follow-up was recorded, but its internal notice could not be delivered.",
       ),
       data: { external_reference: ticket.id },
     };
   }
 
-  return successResult("created", "The support follow-up was created.", {
+  return successResult("created", "The team follow-up was recorded.", {
     external_reference: ticket.id,
   });
 }
@@ -373,25 +411,102 @@ function summarizeItems(items: Array<{ name: string; quantity: number }>): strin
   if (items.length === 0) {
     return "Order items are not available.";
   }
-  return items.slice(0, 6).map((item) => `${item.quantity} × ${item.name}`).join(", ");
+  return items.slice(0, 6).map((item) => (
+    item.quantity === 1 ? item.name : `${item.quantity} units of ${item.name}`
+  )).join(", ");
 }
 
-function summarizeShipment(shipment: {
+function summarizeOrderType(
+  metadata: Array<{ key: string; value: unknown }>,
+): string {
+  const payrollType = metadata.find((entry) => entry.key === "gs_payroll_type")?.value;
+  if (typeof payrollType === "string" && payrollType.trim().toLowerCase() === "sample") {
+    return "a sample order";
+  }
+
+  const retailerOrderReference = metadata.find((entry) => entry.key === "gs_order_cpo")?.value;
+  if (
+    (typeof retailerOrderReference === "string" && retailerOrderReference.trim())
+    || typeof retailerOrderReference === "number"
+  ) {
+    return "a retail order";
+  }
+
+  return "an order";
+}
+
+function summarizeUnavailableShipment(status?: string): string {
+  if (!status) {
+    return "No shipment or arrival date is available yet.";
+  }
+
+  if (status.trim().toLowerCase() === "processing") {
+    return "Your order is still processing. You will be notified by email once it is ready to be shipped.";
+  }
+
+  const readableStatus = status.trim().replace(/[-_]+/gu, " ");
+  return `The order is currently marked as ${readableStatus}, and no shipment or arrival date is available yet.`;
+}
+
+export function summarizeShipment(shipment: {
   carrier?: string;
   trackingNumbers: string[];
   shippedDate?: string;
 }): string {
-  const parts = [];
-  if (shipment.carrier) {
-    parts.push(`Carrier: ${shipment.carrier}`);
+  const parts: string[] = [];
+  const carrier = formatCarrierName(shipment.carrier);
+  const shippedDate = formatShipmentDate(shipment.shippedDate);
+
+  if (shippedDate && carrier) {
+    parts.push(`Your order shipped on ${shippedDate} with ${carrier}.`);
+  } else if (shippedDate) {
+    parts.push(`Your order shipped on ${shippedDate}.`);
+  } else if (carrier) {
+    parts.push(`Your order shipped with ${carrier}.`);
+  } else {
+    parts.push("Your order has stored shipment information.");
   }
-  if (shipment.trackingNumbers.length > 0) {
-    parts.push(`Tracking: ${shipment.trackingNumbers.join(", ")}`);
+
+  const trackingCount = shipment.trackingNumbers.length;
+  if (trackingCount === 1) {
+    parts.push("There is one tracking number for the shipment.");
+  } else if (trackingCount > 1) {
+    parts.push(`There are ${trackingCount} tracking numbers for the shipment.`);
   }
-  if (shipment.shippedDate) {
-    parts.push(`Stored shipped date: ${shipment.shippedDate}`);
+
+  parts.push("I don't have a live delivery estimate.");
+  return parts.join(" ");
+}
+
+function formatCarrierName(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
   }
-  return parts.join(". ");
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "fedex") {
+    return "FedEx";
+  }
+  if (normalized === "ups" || normalized === "usps" || normalized === "dhl") {
+    return normalized.toUpperCase();
+  }
+
+  return value.trim();
+}
+
+function formatShipmentDate(value: string | undefined): string | undefined {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/u.test(value)) {
+    return value;
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
 }
 
 async function requireVerifiedOrderReference(
@@ -399,7 +514,7 @@ async function requireVerifiedOrderReference(
   db: Queryable,
   input: VerifiedOrderInput,
 ) {
-  if (!input.order_items_confirmed || !input.order_email_confirmed || !input.order_verified) {
+  if (!input.order_items_confirmed || !input.order_verified) {
     return undefined;
   }
   return getOrderReference(
@@ -419,13 +534,12 @@ function buildPrivateSupportComment(
     `Call reference: ${input.call_id}`,
     `Customer name: ${input.customer_name ?? "Not provided"}`,
     `Confirmed phone: ${input.confirmed_phone ?? "Not provided"}`,
-    `Customer email: ${input.customer_email ?? "Not provided"}`,
+    `Customer email: ${input.customer_email}`,
     `Caller type: ${input.caller_type}`,
     `Country: ${input.caller_country ?? "Not provided"}`,
     `Order reference: ${orderNumber ?? "Not provided"}`,
     `Communication preference: ${input.communication_preference ?? "Not provided"}`,
     `Urgency context: ${input.urgency_context ?? "Not provided"}`,
-    `Photo context: ${input.photo_context ?? "Not provided"}`,
   ].join("\n");
 }
 

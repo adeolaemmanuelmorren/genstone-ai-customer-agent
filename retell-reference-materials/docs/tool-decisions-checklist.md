@@ -43,10 +43,10 @@ None for the approved tool and storage boundaries.
 - [x] Open-case matching starts primarily from the confirmed contact; the agent
   determines whether the issue is the same matter.
 - [x] Every Zendesk case creation also sends an internal case-created email.
-- [x] Zendesk is internal-only at launch: internal service requester, private
-  comments, and no customer-facing Zendesk notifications. Keep these as
-  backend configuration so customer participation can be enabled later without
-  changing the Retell flow.
+- [x] Zendesk uses the confirmed customer name and email as requester and a
+  private initial comment. The application sends only the internal case-created
+  notice; Zendesk-originated notifications remain governed by Zendesk business
+  rules.
 - [x] Retell data storage is `Everything`.
 - [x] The exact authenticated Retell webhook body is archived in private R2;
   PlanetScale stores the object key and normalized operational record rather

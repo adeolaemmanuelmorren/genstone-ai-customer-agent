@@ -56,6 +56,7 @@ interface ToolRegistration<TInput extends ToolInput> {
     type: string;
     provider: string;
   };
+  hideResultDataFromRetell?: boolean;
 }
 
 export function registerRetellToolRoutes(
@@ -112,6 +113,7 @@ export function registerRetellToolRoutes(
     schema: supportCaseCreateSchema,
     handler: createSupportCaseTool,
     outcome: { type: "tracked_support", provider: "zendesk" },
+    hideResultDataFromRetell: true,
   });
   registerTool(app, {
     route: "/v1/retell/tools/dnc/suppress",
@@ -167,7 +169,8 @@ function registerTool<TInput extends ToolInput>(
       });
 
       if (!execution.shouldExecute) {
-        return c.json(readExistingExecution(execution));
+        const result = readExistingExecution(execution);
+        return c.json(resultForRetell(result, registration.hideResultDataFromRetell));
       }
 
       try {
@@ -200,7 +203,7 @@ function registerTool<TInput extends ToolInput>(
           toolName: registration.toolName,
           resultCode: result.result_code,
         });
-        return c.json(result);
+        return c.json(resultForRetell(result, registration.hideResultDataFromRetell));
       } catch (error) {
         const result = failureResult("error", "The requested action could not be completed.");
         await failToolExecution(db, execution.id, result);
@@ -213,6 +216,18 @@ function registerTool<TInput extends ToolInput>(
       }
     });
   });
+}
+
+function resultForRetell(result: ToolResult, hideData = false): ToolResult {
+  if (!hideData || !result.data) {
+    return result;
+  }
+
+  return {
+    ok: result.ok,
+    result_code: result.result_code,
+    safe_summary: result.safe_summary,
+  };
 }
 
 async function requireToolAuthentication(

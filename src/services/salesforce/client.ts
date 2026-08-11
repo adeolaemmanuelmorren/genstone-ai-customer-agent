@@ -93,6 +93,7 @@ export async function lookupActiveEmployees(
   employeeName: string,
 ): Promise<SalesforceEmployee[]> {
   const url = new URL("/v1/users", getBaseUrl(env));
+  url.searchParams.set("company", "GenStone");
   url.searchParams.set("q", employeeName);
   url.searchParams.set("limit", "20");
 

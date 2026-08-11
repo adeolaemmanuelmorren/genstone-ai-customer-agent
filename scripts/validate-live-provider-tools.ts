@@ -173,7 +173,6 @@ async function runAuthorizedWrites(options: Options, callId: string) {
     caller_type: "customer",
     caller_country: "united_states",
     support_summary: supportSummary,
-    support_summary_confirmed: true,
     communication_preference: "Email",
   });
   checks.push(safeCheck("Zendesk authorized test task", zendesk));

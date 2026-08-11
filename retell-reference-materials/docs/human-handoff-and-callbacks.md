@@ -84,4 +84,5 @@ The decision is simple:
   callback.
 - After creating a Zendesk case, also send the internal case-created email.
 - Do not tell the caller that a case or ticket was created; say the team will
-  respond by the end of the next business day.
+  be in touch as soon as possible. The internal service expectation remains a
+  response by the end of the next business day.

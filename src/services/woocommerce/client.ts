@@ -43,18 +43,45 @@ export async function findWooOrders(
     return [];
   }
 
-  const responses = await Promise.all(
-    createPhoneSearchVariants(normalizedPhone).map((variant) => searchWooOrders(env, variant)),
+  let primaryFailure: unknown;
+  try {
+    const primaryOrders = await searchWooOrders(env, normalizedPhone);
+    const primaryMatches = filterOrdersByPhone(primaryOrders, normalizedPhone);
+    if (primaryMatches.length > 0) {
+      return Promise.all(primaryMatches.map((order) => includeSiblingOrder(env, order)));
+    }
+  } catch (error) {
+    primaryFailure = error;
+  }
+
+  const responses = await Promise.allSettled(
+    createPhoneSearchVariants(normalizedPhone)
+      .slice(1)
+      .map((variant) => searchWooOrders(env, variant)),
   );
+  const successfulResponses = responses.flatMap((response) =>
+    response.status === "fulfilled" ? [response.value] : []
+  );
+
+  if (successfulResponses.length === 0) {
+    const firstFailure = responses.find((response) => response.status === "rejected");
+    throw primaryFailure ?? firstFailure?.reason ?? new Error("Order lookup failed.");
+  }
+
   const uniqueOrders = new Map<string, WooOrderCandidate>();
-  for (const order of responses.flat()) {
+  for (const order of successfulResponses.flat()) {
     uniqueOrders.set(order.id, order);
   }
 
-  const matches = [...uniqueOrders.values()].filter(
-    (order) => normalizeUsPhone(order.phone) === normalizedPhone,
-  );
+  const matches = filterOrdersByPhone([...uniqueOrders.values()], normalizedPhone);
   return Promise.all(matches.map((order) => includeSiblingOrder(env, order)));
+}
+
+function filterOrdersByPhone(
+  orders: WooOrderCandidate[],
+  normalizedPhone: string,
+): WooOrderCandidate[] {
+  return orders.filter((order) => normalizeUsPhone(order.phone) === normalizedPhone);
 }
 
 export async function getWooOrder(
@@ -109,20 +136,6 @@ export function getTrackingUrl(
   }
 
   return undefined;
-}
-
-export function maskEmail(value: string | undefined): string | undefined {
-  if (!value || !value.includes("@")) {
-    return undefined;
-  }
-
-  const [localPart, domain] = value.split("@");
-  if (!localPart || !domain) {
-    return undefined;
-  }
-
-  const visible = localPart.slice(0, Math.min(2, localPart.length));
-  return `${visible}${"*".repeat(Math.max(3, localPart.length - visible.length))}@${domain}`;
 }
 
 export function normalizeUsPhone(value: string | undefined): string | undefined {

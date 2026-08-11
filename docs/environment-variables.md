@@ -55,10 +55,10 @@ function calls with the workspace's designated webhook API key. Store that
 exact key under `RETELL_WEBHOOK_API_KEY_GENSTONE`; do not create an unrelated
 shared secret.
 
-The Retell account currently returns no owned or imported phone numbers, and
-the current `RETELL_FROM_NUMBER_GENSTONE` value is not valid E.164. Replace it
-with the approved production number before binding or call-path testing; do not
-invent, purchase, or import a number as part of an ordinary deployment.
+The Retell account has one purchased Retell-managed Twilio number.
+`RETELL_FROM_NUMBER_GENSTONE` matches that E.164 number in production Doppler.
+The number's inbound route is pinned to published GenStone agent version `0`;
+it does not follow an unpinned `latest` alias.
 
 ## Local Command Configuration
 

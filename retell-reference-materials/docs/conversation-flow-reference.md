@@ -22,15 +22,17 @@ discourages equation edges, and can become less reliable beyond 20 nodes.
 Use these rules:
 
 1. Use **Conversation nodes** for dialogue that does not need a tool.
-2. Use **Extract DV nodes** immediately after meaningful intake to capture
-   typed values from the conversation.
-3. Read sensitive identifiers back in a **Conversation node** and obtain caller
-   confirmation before a lookup or write.
-4. Use **Function nodes** for guaranteed backend calls, especially every
-   authenticated lookup or state-changing action.
-5. Use **Subagent nodes** only when dialogue and an optional, narrowly scoped
-   read tool genuinely belong together.
-6. Use **Logic Split nodes** and equation edges for exact, typed state.
+2. Default each focused business responsibility to one **Subagent node** plus
+   one exit. Let it own dialogue, corrections, fact capture, and its narrowly
+   scoped tools.
+3. Use the Subagent's owned Extract Dynamic Variable tool for structured facts
+   needed by the backend.
+4. Keep security, authorization, idempotency, quote exclusion, verified-order
+   references, and write validation in backend tools.
+5. Add separate Extract DV, Function, or Logic Split nodes only for a proven
+   atomic boundary that cannot be enforced safely by the backend or focused
+   Subagent.
+6. Use main-canvas Logic Splits only when a result changes the business path.
 7. Use prompt edges only for meaning that must be interpreted from speech.
 8. Give every split a safe fallback path. A failed lookup must never become a
    made-up answer.
@@ -42,9 +44,9 @@ Use these rules:
 | Retell capability | What it does | GenStone decision | Use when | Do not use when |
 | --- | --- | --- | --- | --- |
 | Conversation node | Multi-turn dialogue without tools; prompt or static first sentence | **Core** | Greeting, intent intake, data collection, confirmation, explaining a verified result, closing | A tool must execute in the same step |
-| Subagent node | Multi-turn dialogue where the LLM chooses whether and when to call attached tools | **Selective** | Narrow, read-only product or knowledge lookup where the caller may ask several related questions | A tool must always run, the action changes state, or several unrelated tools would be attached |
-| Extract DV node | Silently extracts Text, Number, Enum, or Boolean values from prior dialogue | **Core** | After intake, before confirmation, and before deterministic routing | As a substitute for asking the caller for missing information |
-| Function node | Executes exactly one function on entry | **Core** | Contact, employee, order, shipment or case lookup; case creation; scheduling; suppression; or any required backend action | The tool is optional and depends on a later caller question |
+| Subagent node | Multi-turn dialogue with owned fact capture and narrowly scoped tools | **Core** | One focused responsibility such as contact, order verification, shipment, support, callback, transfer, or DNC | Unrelated business responsibilities would be mixed together |
+| Extract DV node | Silently extracts typed values from prior dialogue | **Exceptional as a separate node** | A proven atomic graph boundary cannot be handled by the Subagent's owned capture tool | Ordinary collection or confirmation inside a focused interaction |
+| Function node | Executes exactly one function on entry | **Exceptional as a separate node** | The graph must force an atomic call before any further generated dialogue and the backend cannot enforce the boundary | A focused Subagent can own the required call and backend validation already prevents unsafe execution |
 | Code node | Runs JavaScript in Retell's QuickJS sandbox | **Not initial** | Low-risk formatting or calculation with no secrets, if a backend route would add no value | Authentication, secrets, PII-sensitive logic, production writes, or retryable business actions |
 | SMS node | Sends SMS on entry from an eligible number | **Out of scope** | Only after a separate SMS use is explicitly approved | Communication preference is merely being recorded, photos need follow-up, or email/callback already handles the outcome |
 | MCP node | Calls one tool on a remote MCP server on entry | **TBD** | Only if Bradford establishes a production MCP gateway with authentication, audit, and stable contracts | Direct access to broad internal tools or when a narrow custom function is safer |
@@ -64,11 +66,12 @@ Use these rules:
 | Who decides to run the tool? | The graph; it always runs on entry | The LLM decides from the conversation |
 | Number of tools | One | Multiple, although fewer is safer |
 | Can it hold a normal dialogue? | No | Yes |
-| Best GenStone use | Confirmed identifier → guaranteed lookup/write | Optional read-only lookup during a focused dialogue |
-| State-changing actions | Preferred, with idempotency | Avoid |
+| Best GenStone use | Rare atomic graph boundary | Focused contact, order, shipment, support, callback, transfer, or DNC responsibility |
+| State-changing actions | Allowed | Allowed only with backend validation and idempotency |
 | Result handling | Wait for result, branch on typed result, then explain in a Conversation node | Result can be discussed inside the same node |
 
-Default to a Function node. A Subagent node needs an explicit reason.
+Default to a focused Subagent. A separate Function node needs an explicit
+atomic-boundary reason.
 
 ## Transition Policy
 
@@ -129,8 +132,9 @@ flowchart LR
     E -->|"Else"| G["Conversation: safe failure and next step"]
 ```
 
-The agent should not read back a whole record of PII. Confirm only the minimum
-needed identifier, such as the order number and masked email domain.
+The agent should not read back a whole customer record. Confirm only what the
+current action needs. For GenStone order verification, read the complete order
+email naturally once; do not shorten, mask, or partially spell it.
 
 ## Tool Execution And Security Rules
 
@@ -152,7 +156,8 @@ needed identifier, such as the order number and masked email domain.
 - A caller interruption does not cancel an in-flight custom function. Every
   state-changing endpoint must therefore be idempotent.
 - Use Wait for Result whenever the next node depends on the outcome.
-- Explain the result in a Conversation node after deterministic branching.
+- Let the responsible Subagent explain the verified result. Add a separate
+  result branch only when the outcome changes the next business path.
 
 ## Global Settings Relevant To GenStone
 

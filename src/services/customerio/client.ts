@@ -9,6 +9,7 @@ export async function sendCustomerIoEmail(
   input: {
     transactionalMessageId: number;
     recipient: string;
+    blindCopyRecipient?: string;
     messageData: Record<string, unknown>;
   },
 ): Promise<string> {
@@ -26,9 +27,10 @@ export async function sendCustomerIoEmail(
       transactional_message_id: input.transactionalMessageId,
       identifiers: { email: input.recipient },
       to: input.recipient,
+      bcc: input.blindCopyRecipient,
       message_data: input.messageData,
     }),
-  }, 6_000);
+  });
   const body = await readJson(response);
 
   if (!response.ok) {

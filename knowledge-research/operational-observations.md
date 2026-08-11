@@ -29,4 +29,7 @@
 
 ## Zendesk
 
-Pending export and review. Transcript processing is complete.
+- All 126,466 ticket records were exported through Zendesk's ticket cursor endpoint.
+- The bulk comment-event stream was checkpointed through August 27, 2024, yielding 255,296 locally deduplicated comment IDs across 97,240 tickets; the stream did not reach end-of-stream before the scope was reduced.
+- No Zendesk ticket-level conclusions are included here because the collected records were not read ticket-by-ticket. The transcript observations above remain the only reviewed operational evidence in this document.
+- Raw Zendesk content remains gitignored and may contain customer-specific information. It must be deidentified before any later finding is promoted into a tracked document.

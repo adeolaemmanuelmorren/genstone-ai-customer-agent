@@ -1,6 +1,6 @@
 # Sources Reviewed
 
-> Draft research record. The website and call-transcript phases are complete; Zendesk will be added next in source order.
+> Draft research record. The website and call-transcript phases are complete. Zendesk collection stopped at the revised scope recorded below and was not treated as a complete ticket-comment review.
 
 ## GenStone Website
 
@@ -669,4 +669,12 @@ The sitemap-level exclusions above are preserved URL-by-URL in `raw/website/excl
 
 ## Zendesk Tickets
 
-Pending export and review. The prerequisite transcript review is complete.
+- Collection date: **August 10, 2026**
+- Ticket cursor result: **126,466 of 126,466 ticket records exported**, across 127 pages, with Zendesk reporting `end_of_stream: true`.
+- Ticket records include the normalized subject, description, status, dates, tags, routing identifiers, and custom-field values needed for later research. Raw customer material remains under the gitignored `raw/zendesk/` directory.
+- Comment-event cursor checkpoint: **417 pages**, **418,105 ticket events**, and **260,051 observed comment events** through **August 27, 2024**. Zendesk had not yet reported end-of-stream when collection was stopped under the revised scope.
+- Locally deduplicated material at the checkpoint: **255,296 unique comment IDs across 97,240 tickets**.
+- Review result: the Zendesk material was **collected but not read ticket-by-ticket and not merged into the caller-facing topic documents**. It must not be described as a complete Zendesk review.
+- Recent-period limitation: all ticket records, including their initial descriptions, are present through the 2026 collection date; complete follow-up comment histories after August 27, 2024 are not present.
+- Privacy rule: raw ticket and comment content is excluded from version control. No customer names, contact details, addresses, order/PO/tracking identifiers, or other customer-specific information was promoted into the knowledge draft.
+- Export evidence: `raw/zendesk/export-state.json`, `raw/zendesk/comment-event-state.json`, `raw/zendesk/ticket-index.json`, and the per-ticket JSON records under `raw/zendesk/tickets/`.

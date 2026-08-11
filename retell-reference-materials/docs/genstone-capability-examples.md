@@ -27,13 +27,9 @@ The launch design follows a small set of driving principles:
    scheduling. Every unresolved existing-order request uses the general
    Zendesk path; never schedule an existing-order callback.
 5. Never expose “case” or “ticket” terminology. For Zendesk follow-up, say the
-   customer service team responds by the end of the next business day.
+   team will be in touch as soon as possible.
 6. Record phone, email, or text preferences as fields on the existing follow-up;
    do not create separate communication-method scenarios.
-7. Do not proactively ask whether support photos exist. If the caller mentions
-   photos, include that fact in the case and let the team provide the best way
-   to submit them.
-
 New visualizer project photos are separate from support evidence and use the
 public `genstone.com/visualizer` page.
 
@@ -45,8 +41,9 @@ separate tools or conversation flows for every issue label.
 
 1. Tell the caller: “Before we continue, I need to verify a few things.”
 2. Confirm the caller-ID phone number.
-3. Look up the most recent WooCommerce order for that phone number.
-4. When found, confirm the items on the order and the order email.
+3. Exclude quote-status drafts and look up the most recent actual WooCommerce
+   order by phone or exact order number.
+4. When found, confirm the items on the order.
 5. When no order is found, ask for a different phone number or the order number,
    look it up, and confirm the matching order.
 6. Ask how the agent can help with the order. If the caller already explained
@@ -54,7 +51,8 @@ separate tools or conversation flows for every issue label.
 7. When the caller asks when a tracked delivery will arrive, share only the
    verified WooCommerce shipment fields. If requested, send the provider,
    tracking number(s), approved carrier link(s), and stored shipped date to the
-   confirmed order email. Do not infer an ETA or delivery state.
+   caller-confirmed destination email. Ask for and confirm that destination only
+   after the caller accepts the email offer. Do not infer an ETA or delivery state.
 
 This is one reusable gate for status, shipment, damage, claims, returns,
 warranties, receipts, payment questions, and every other existing-order intent.
@@ -148,8 +146,9 @@ These apply across every capability:
 - Capture exactly one primary intent; add secondary tags separately.
 - Route every existing-order caller through the shared WooCommerce verification
   path before discussing the order.
-- Spell back names and emails; repeat phone, order, PO, SKU, tracking, and store
-  numbers.
+- Confirm only values needed for the current action. Use the last four digits
+  for initial phone confirmation, confirm a shipment-email destination once,
+  and do not read tracking numbers aloud.
 - Never collect full card data, CVV, passwords, or authentication codes.
 - Do not claim a callback, follow-up request, case, or lookup succeeded
   unless a tool returned a success code.
@@ -180,9 +179,9 @@ The node sequences below name node roles, not final dashboard node names.
 | 3 | **Project sizing, quote, price, material takeoff.** Contact, ZIP, product/color, project summary, and timing. | `C intake → X → C confirm → F callback → C next step → E` | No automated quote, project record, or upload flow. | Centralized callback scheduling. | Note that photos are available when relevant; the human follow-up provides submission instructions. |
 | 4 | **Product catalog question.** Product family, color, SKU/model, and exact question. | Verified FAQ: `C → E`. Live data: `C → F product lookup → C answer or F callback → E`. | Use only approved content or confirmed data. | Confirmed product lookup; centralized callback scheduling. | Project-specific fit, code, safety, and discontinued-product questions go to follow-up when not explicitly verified. |
 | 5 | **Samples, brochures, literature, color, visualizer.** Contact, caller/store, product/color, order number if known, and issue. | Sample order: `C → F WooCommerce order lookup → C answer or F Zendesk → E`. New visualizer: `C → C provide public page → E`. | Samples are existing orders and use Zendesk when unresolved. New project images go to `genstone.com/visualizer`; new-project page questions use callback follow-up when needed. | WooCommerce order lookup; approved public knowledge; Zendesk or new-project callback according to the primary route. | The Visualizer page is for project renderings, not support evidence. Do not promise rendering timing or submit the form for the caller. |
-| 6 | **Installation, use, care, technical support.** Product, project stage, exact question, and purchase channel/order. | Approved guidance: `C → E`. Anything else: `C intake → F callback or case → E`. | Safety or project-specific questions always use follow-up unless the answer is explicitly approved. | Approved knowledge; email callback or Zendesk case according to the ownership rule. | Do not introduce a photo question. If the caller volunteers that photos exist, preserve it as ordinary context. |
-| 7 | **Existing order status, shipping, delivery, tracking.** Confirmed order number or order email/phone, purchase channel, and requested status. | `C confirm identifier → F order/shipment lookup → C verified result, optional F tracking email, or F Zendesk → E` | Lookup failures and unsupported questions use Zendesk. A requested tracking email goes only to the confirmed WooCommerce order email. | Confirmed WooCommerce order/shipment lookup; Customer.io tracking-details transactional email; Zendesk follow-up. | Present only returned status. Email provider, tracking number(s), approved carrier link(s), and stored shipped date when available. Never infer an ETA, delivery state, or partial shipment, and never expose another customer's order. |
-| 8 | **Existing-order problem needing resolution.** This includes missing, wrong, damaged, defective, return, refund, cancellation, exchange, RGA, warranty, and similar requests. | `C shared verification → C confirm issue → F Zendesk case → C next step → E` | One decision: does the request require tracked human ownership and resolution? If yes, create one general support case. | WooCommerce verification and one general Zendesk case action. | Do not create issue-specific flows, proactively ask about photos, expose case terminology, or promise correction, replacement, approval, or refund. |
+| 6 | **Installation, use, care, technical support.** Product, project stage, exact question, and purchase channel/order. | Approved guidance: `C → E`. Anything else: `C intake → F callback or case → E`. | Safety or project-specific questions always use follow-up unless the answer is explicitly approved. | Approved knowledge; email callback or Zendesk case according to the ownership rule. | Keep caller-provided issue details as ordinary context. |
+| 7 | **Existing order status, shipping, delivery, tracking.** Confirmed order number or phone, purchase channel, and requested status. | `C confirm identifier → F order/shipment lookup → C verified result, optional F tracking email, or F Zendesk → E` | Lookup failures and unsupported questions use Zendesk. Ask for and confirm an email destination only when the caller accepts a shipment email. | Confirmed WooCommerce order/shipment lookup; Customer.io tracking-details transactional email; Zendesk follow-up. | Present only returned status. Email provider, tracking number(s), approved carrier link(s), and stored shipped date when available. Never infer an ETA, delivery state, or partial shipment, and never expose another customer's order. |
+| 8 | **Existing-order problem needing resolution.** This includes missing, wrong, damaged, defective, return, refund, cancellation, exchange, RGA, warranty, and similar requests. | `C shared verification → C confirm issue → F Zendesk case → C next step → E` | One decision: does the request require tracked human ownership and resolution? If yes, create one general support case. | WooCommerce verification and one general Zendesk case action. | Do not create issue-specific flows, expose case terminology, or promise correction, replacement, approval, or refund. |
 | 11 | **Billing, payment, receipt, card, discount, promotion, checkout.** Contact, order if any, and a safe issue description; no card data. | Existing order: `C safe intake → F order lookup → F Zendesk → E`. New project: `C → F callback → E`. | No receipt or payment-link action without owner confirmation. | Confirmed WooCommerce lookup; route-appropriate Zendesk or callback. | Never collect card details or promise refunds, exceptions, or payment timing. |
 | 12 | **Retailer, store, Pro Desk, contractor, distributor.** Store/company, caller role, store number, PO/order/SKU, and issue. | `C intake → optional F confirmed WooCommerce lookup → F Zendesk → E` | Historical agents collected retailer context; current unresolved retailer-order work uses Zendesk. | WooCommerce when the order is present there; otherwise existing-order Zendesk follow-up. | Minimize customer data and do not imply access to a retailer system. |
 | 13 | **Named person or previous Project Coordinator.** Caller/contact, employee name if volunteered, and order/project context. | `C confirm named transfer → F employee lookup → T warm transfer → route-aware fallback`. | The agent does not ask the caller to select a person. Transfer failure returns to new-project callback or existing-order Zendesk. | Salesforce employee lookup; Retell warm transfer; route-appropriate follow-up. | Do not claim the employee is available or expose the direct number. |
@@ -224,12 +223,12 @@ flowchart TD
     D -->|"No"| E["Conversation: ask for alternate phone or order number"]
     E --> F["Function: retry WooCommerce order lookup"]
     F --> D
-    D -->|"Yes"| G["Conversation: confirm order items and order email"]
+    D -->|"Yes"| G["Conversation: confirm order items"]
     G -->|"Incorrect"| E
     G -->|"Confirmed"| H["Conversation: ask how to help or repeat back stated problem"]
     H --> I{"Resolution type"}
     I -->|"Verified answer available"| J["Conversation: provide verified answer"]
-    I -->|"Tracking details email requested"| O["Function: email tracking details to confirmed order email"]
+    I -->|"Tracking details email requested"| O["Function: email tracking details to caller-confirmed destination"]
     I -->|"Any unresolved existing-order issue"| L["Function: create new private Zendesk ticket"]
     O --> P["Conversation: confirm send result without promising an ETA"]
     L --> M

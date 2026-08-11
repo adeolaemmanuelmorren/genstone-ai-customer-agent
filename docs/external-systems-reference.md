@@ -44,9 +44,10 @@ Owner task: WooCommerce integration discovery
 #### Existing-order verification and selection
 
 - The authoritative caller sequence is: search by confirmed caller-ID phone,
-  choose the most recent matching WooCommerce order, and confirm its items and
-  order email. If no order is found, retry using an alternate phone or numeric
-  order number. Do not expose order data before this verification succeeds.
+  exclude quote-status drafts, and confirm the candidate items. Exact
+  order-number lookup also excludes quotes. If no order is found, retry using an alternate
+  phone or numeric order number. Do not expose order data before this
+  verification succeeds.
 - Caller-ID and alternate-phone lookup both search `billing.phone`. The Worker
   must format the search value using the GenStone rule, normalize every
   returned candidate again, and require exact equality. WooCommerce's broad
@@ -119,6 +120,8 @@ Owner task: WooCommerce integration discovery
 
 - Samples use the regular order lookup and verification path; there is no
   separate sample-order endpoint.
+- When `gs_payroll_type=sample`, the caller-safe candidate confirmation may
+  identify it as a sample order before speaking its items.
 - The store labels a paid order with `gs_payroll_type=sample` when its current
   classification logic finds a product type of `samples` or `closing-kit`, or
   finds only panel items with subtotal under $200. This label may describe a
@@ -183,8 +186,11 @@ Owner task: WooCommerce integration discovery
   consistently populated.
 - Retailer, dealer, distributor, or store/PO context may help locate an order
   only when a normal WooCommerce record exists. Candidate location must still
-  flow through the same item-and-email verification. `gs_order_cpo` or company
+  flow through the same item verification. `gs_order_cpo` or company
   name alone is not sufficient authorization.
+- A populated explicit retail-order signal may label the candidate as a retail
+  order in the item-confirmation sentence. It does not replace verification or
+  authorize any additional order data.
 - The public retailer claim form accepts a retailer order number, email, and
   phone. It attempts `wc_get_order` when the number is a WooCommerce ID, but its
   explicit retailer/unknown-order branch still submits the issue for human
@@ -207,14 +213,14 @@ Owner task: WooCommerce integration discovery
   all five, and the ordinary WooCommerce phone search returned the same order
   for all five after exact normalized-phone filtering. Four of the five phones
   had multiple exact historical order matches, confirming that the adapter must
-  keep the existing newest-order selection and item/email confirmation steps.
+  exclude quotes, select the newest actual order, and confirm its items.
 - Across those 500 REST responses, `gs_order_cpo` was the only metadata key whose
   name indicated store, retailer, dealer, distributor, Pro Desk, or CPO context.
   The production WordPress REST route index exposed zero retailer-, dealer-,
   distributor-, Pro Desk-, or CPO-specific routes.
 - Conclusion: do not create a retailer-specific lookup, caller scenario, or
   portal integration. Use the regular phone/numeric-order lookup and normal
-  item-and-email verification when a WooCommerce record exists; otherwise use
+  item verification when a WooCommerce record exists; otherwise use
   the existing follow-up path. There is no remaining launch owner decision for
   this boundary.
 
@@ -226,7 +232,7 @@ Owner task: WooCommerce integration discovery
 | `order_not_found` | Return no customer or order details; try an alternate phone or numeric order number. |
 | `multiple_possible_orders` | Return no candidates and request the alternate identifier. Ordinary historical matches still select the newest exact order. |
 | `shipment_found` | Return the stored carrier, tracking number(s), stored shipped timestamp, and approved derived link when present. |
-| `shipment_unavailable` | The order exists but usable tracking metadata does not; use normal follow-up. |
+| `shipment_unavailable` | The order exists but usable tracking metadata does not. For `processing`, say it is still processing and the customer will be notified by email once ready to ship. Otherwise state the stored status and lack of shipment/arrival data. Do not force support follow-up. |
 | `system_error` | Treat authentication, network, rate-limit, server, and invalid-response failures as errors; disclose no data and use normal follow-up. |
 
 ### Still Needed
@@ -399,7 +405,7 @@ Owner task: Zendesk integration discovery
 - Use one general create-or-update case action instead of issue-specific tools.
 - Later contact about the same issue should update the existing open case.
 - Caller-facing language must not mention a case, ticket, or internal ID.
-- Communication preference and caller-volunteered photo availability are case
+- Communication preference and other relevant caller-provided details are case
   context, not separate scenarios.
 - The live account is `genstone.zendesk.com`. Brand `GenStone` (`brand_id`
   `466088`) is active and is the account default.
@@ -429,7 +435,7 @@ Owner task: Zendesk integration discovery
 
 | Purpose | Zendesk target | Live behavior |
 | --- | --- | --- |
-| Requester | Native `requester` / `requester_id` | Zendesk can reuse or create an end user from confirmed name and email. The integration identity remains the submitter when the Tickets API is used normally. |
+| Requester | Native `requester` / `requester_id` | Required confirmed customer name and email. Zendesk reuses an existing end user by email or creates one. The integration identity remains the submitter when the Tickets API is used normally. |
 | Customer name | Custom field `27432028` | Active text field; required only on the public portal. |
 | Phone | Custom field `81047148` | Active internal text field. |
 | Caller type | Custom field `360025854713` | `contractor`, `customer`, `distributor`, `retail_partner`, or `other`. |
@@ -458,7 +464,7 @@ Owner task: Zendesk integration discovery
 | Caller type was confirmed | Map customer/homeowner to `customer`, contractor to `contractor`, distributor to `distributor`, retailer/store/Pro Desk to `retail_partner`, and only use `other` when that is the confirmed fit. |
 | Country was confirmed | Store `canada`, `united_states`, or `other_country`; otherwise leave it unset. |
 | WooCommerce order was verified | Store the numeric order ID in the proposed dedicated order field once that field exists; include safe order and affected-item context in the private comment. |
-| Optional context was volunteered or confirmed | Include retailer/store context, urgency signals, communication preference, and photo availability in the private comment. Do not ask for these solely to fill Zendesk. |
+| Optional context was volunteered or confirmed | Include relevant retailer/store context, urgency signals, and communication preference in the private comment. Do not ask for these solely to fill Zendesk. |
 
 - The approved launch behavior is to place every unresolved existing-order
   request in the `Support` group with no individual assignee. Use native Type
@@ -499,9 +505,9 @@ Owner task: Zendesk integration discovery
   public comment is added, and another trigger emails the requester and CCs
   when an agent creates a new public ticket. A 25-ticket direct sample of
   current API-created work was entirely public and used the requester as the
-  submitter. That historical integration shape is not the approved voice-agent
-  launch behavior: voice-agent tickets use the internal service requester and
-  private comments.
+  submitter. Voice-agent tickets instead attach the confirmed customer as the
+  requester while keeping the initial comment private and the integration
+  identity as submitter.
 - Across 269 currently unsolved tickets, 34 were open and 235 were pending;
   250 were assigned and 19 were unassigned. Priority was unset on 198 tickets.
   All belonged to the GenStone brand. These counts are a dated operational
@@ -527,13 +533,10 @@ Owner task: Zendesk integration discovery
   the team will follow up, and only after a success result. Do not promise a
   refund, return, replacement, correction, approval, delivery date, or response
   time.
-- Do not ask whether photos exist. Preserve caller-volunteered photo
-  availability as ordinary internal context and let the team provide the
-  submission method.
-- Private comments and an internal service requester are the approved launch
-  behavior. Zendesk customer notifications remain disabled. Otherwise Zendesk
-  can send customer emails containing the prohibited “ticket” wording after
-  the call.
+- The confirmed customer is the requester and the initial comment is private.
+  The application does not send a customer email. Zendesk triggers and
+  automations must continue excluding these answering-service tickets if all
+  Zendesk-originated customer notifications are to remain disabled.
 
 ### Still Needed
 
@@ -542,8 +545,7 @@ Owner task: Zendesk integration discovery
   Worker-owned secret path. Do not use a personal admin token in production.
 - Approve the subject template and minimum private comment layout: verified
   order, confirmed contact, factual issue summary, affected items, retailer
-  context, urgency signals, communication preference, and volunteered photo
-  availability.
+  context, urgency signals, and communication preference.
 - Keep new voice support work unassigned in the approved `Support` group with
   `normal` priority. Caller urgency remains factual internal context.
 - Use the internal integration/service identity as requester. Do not create or
@@ -625,8 +627,9 @@ Owner task: Customer.io transactional-email discovery
 - Callback messages remain internal-only. Adeola approved one separate
   customer-facing transactional use on 2026-08-08:
   after the shared existing-order verification succeeds, when a caller asks
-  when the delivery will arrive or requests tracking details, offer to email
-  the stored tracking information to the confirmed WooCommerce order email.
+  when the delivery will arrive or requests tracking details, give a concise
+  spoken status without reading tracking numbers and offer to email the stored
+  details to a complete address confirmed by the caller.
   This is part of the existing order/shipment path, not a new caller scenario.
 - `GenStone Order Tracking Email` now exists as the replacement draft
   transactional message id `7`, content template id `77`, and trigger name
@@ -641,12 +644,18 @@ Owner task: Customer.io transactional-email discovery
   delivery settings as the other operational messages and has the fixed
   internal recipient `appt@genstone.com`. Its content contains only safe case
   context and the internal Zendesk link; it does not notify the customer.
-- The tracking message uses the confirmed order email as the Customer.io
-  recipient. The backend must also pass that same address as `to` and the
-  Customer.io email identifier; do not accept an arbitrary alternate recipient
-  for order data. Required message data is the WooCommerce order number and
+- The tracking message uses the caller-confirmed destination as the Customer.io
+  recipient. The backend passes that address as `to` and the Customer.io email
+  identifier. Only after the caller accepts the shipment-email offer, the agent
+  asks which complete address to use and confirms it once before sending.
+  Required message data is the WooCommerce order number and
   one or more `shipments` containing `provider`, `tracking_number`, optional
   approved `tracking_url`, and optional normalized `shipped_date`.
+- **Temporary browser-QA override:** the active Worker ignores the
+  caller-confirmed shipment-email destination and sends every shipment message
+  to `adeolamorren@gmail.com`, with `travis.m@generalsteel.com` as BCC. The
+  caller-supplied address receives nothing. This source-owned safety override
+  must be removed before customer-facing delivery is enabled.
 - The tracking message is informational. It must state that the carrier link
   has the latest available carrier updates and must not claim an ETA,
   delivered date, `in_transit`, `delivered`, `exception`, or partial shipment

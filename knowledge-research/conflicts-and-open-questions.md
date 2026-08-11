@@ -1,6 +1,6 @@
 # Conflicts and Open Questions
 
-> Draft research log. Do not resolve conflicts by choosing a convenient answer. Website and transcript findings are included; Zendesk evidence will be appended next.
+> Internal V2 backlog. These unresolved items are intentionally excluded from the V1 knowledge base. Add an item to a future knowledge-base version only after an authoritative answer is documented.
 
 ## Website Conflicts
 

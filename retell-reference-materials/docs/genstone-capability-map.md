@@ -17,7 +17,7 @@ launch requirements.
 - Reuse the same verification, direct-answer, callback, and tracked-support
   outcomes across topics without inventing topic-specific flows.
 - Answer only from approved knowledge or confirmed tool results.
-- A new prospect not found in Salesforce uses the confirmed internal prospect
+- A new prospect not found in Salesforce uses the internal prospect
   follow-up to Travis. Other new-project follow-up uses the callback path.
 - An existing-order issue the agent cannot resolve uses Zendesk, followed by an
   internal case-created email. Do not schedule an existing-order callback.
@@ -40,7 +40,7 @@ flowchart TD
 
     VERIFY --> HELP{"What outcome is needed?"}
     HELP -->|"Confirmed answer available"| ANSWER["Give verified answer"]
-    HELP -->|"Shipment details requested"| SHIPMENT["Offer email to confirmed order email"]
+    HELP -->|"Shipment details requested"| SHIPMENT["Give concise status; offer full details by email"]
     HELP -->|"Unresolved existing-order issue"| CASE["Create or update Zendesk case"]
 
     CASE --> CASE_EMAIL["Send internal case-created email"]
@@ -53,7 +53,7 @@ flowchart TD
     FALLBACK -->|"Existing order"| CASE
 
     NEW --> NEWCONTACT{"Salesforce contact result"}
-    NEWCONTACT -->|"Not found"| PROSPECT["Send confirmed internal prospect follow-up"]
+    NEWCONTACT -->|"Not found"| PROSPECT["Send internal prospect follow-up"]
     NEWCONTACT -->|"Found or ambiguous; follow-up needed"| CALLBACK
     NEWCONTACT -->|"Answered"| END
     PROSPECT --> END
@@ -70,12 +70,17 @@ flowchart TD
 Before discussing an existing order:
 
 1. Confirm the caller's phone number.
-2. Look up the most recent WooCommerce order by that number.
-3. If found, confirm the order items and order email.
-4. If not found, ask for another phone number or the order number and confirm
-   the matching order.
-5. Then ask how the agent can help. If the caller already explained the issue,
-   repeat it back instead of making them start over.
+2. Exclude quote-status drafts and look up the most recent actual WooCommerce
+   order by phone or exact order number.
+3. If found, identify a stored sample or explicitly signaled retail order and
+   confirm the order items.
+4. If the first candidate is rejected, ask for the order number once. If the
+   caller does not have it, do not ask again; check the remaining recent
+   non-quote orders for that phone until one matches or none remain.
+5. If no phone-matched candidate is confirmed, use the unresolved-order
+   support path without attaching a rejected order.
+6. Then help with the issue already stated. Ask what they need only when they
+   have not explained it yet; do not make them repeat it or recite it back.
 
 This same gate applies to status, shipping, damage, claims, returns, warranties,
 missing or wrong items, samples, receipts, and other order questions.
@@ -94,14 +99,16 @@ future outcome.
 ### Shipment email
 
 If a verified caller asks when the shipment will arrive or asks for tracking,
-offer to email the stored shipment details. Confirm the order email and send
-only to that address. Include only verified carrier/provider, tracking number,
-approved tracking link, and stored shipped date. If authoritative delivery or
-ETA data is unavailable, say so and use follow-up when needed.
+give a concise spoken summary without reading tracking numbers aloud, then
+offer to email the stored shipment details. Confirm the complete destination
+email; accept a different caller-provided address after reading it back once.
+The email includes only verified carrier/provider, tracking number, approved
+tracking link, and stored shipped date. If authoritative delivery or ETA data
+is unavailable, say so and use follow-up when needed.
 
 ### Callback / internal email
 
-For a confirmed new prospect whose Salesforce contact lookup returns
+For a new prospect whose Salesforce contact lookup returns
 `not_found`, send the internal unmatched-prospect follow-up to Travis. This
 does not create a Salesforce Lead or Contact and does not email the caller.
 
@@ -118,11 +125,18 @@ during the call. The topic may be a return, warranty, claim, damage, missing
 item, wrong item, or something else; these labels do not create separate
 conversation paths.
 
-Create one new private answering-service ticket for each confirmed unresolved
+Create one new private answering-service ticket for each unresolved
 existing-order call, then send the internal case-created email. Do not search,
 compare, select, or update an earlier ticket during the call. Tell the caller
-the customer service team will respond by the end of the next business day; do
-not expose case terminology or offer an appointment time.
+the team will be in touch as soon as possible; do not expose case terminology
+or offer an appointment time. The internal email is not a customer email. The
+customer service team's internal response expectation remains the end of the
+next business day.
+
+Keep support brief. Ask one open question when the issue needs more detail;
+for damage, ask “What was broken?” without listing the order items again. Reuse
+verified identity and order context. After the write, use the single approved
+team-follow-up sentence and close normally.
 
 ### Named-person transfer
 

@@ -1,6 +1,6 @@
 # Installation and Care
 
-> Draft pending business-owner approval. Website facts are supplemented by deidentified transcript needs; Zendesk findings have not yet been merged.
+> V1 candidate pending business-owner approval. Only supported, non-conflicting caller-facing facts are included. Deferred items remain in `../conflicts-and-open-questions.md`.
 
 ## Installation Overview
 
@@ -29,7 +29,6 @@
 ## Caulk, Paint, and Finishing Quantities
 
 - Big Stretch caulk is applied at panel shiplaps and at ledger, trim, and substrate connections to create weather-tight joints. [Source](https://genstone.com/how-to-install/adhesive-caulking-and-paint)
-- The body of the current caulking page recommends one tube of Big Stretch for each 100 square feet, including at least one tube for smaller projects. A heading on the same page says “one every 400 SQFT,” so this quantity is unresolved and must be confirmed before publication. [Source](https://genstone.com/how-to-install/adhesive-caulking-and-paint)
 - The page recommends one paint kit per 400 square feet for cut-edge touch-up and one paint kit per tube of Exact Color caulk used for tinting. [Source](https://genstone.com/how-to-install/adhesive-caulking-and-paint)
 - It recommends one tube of Exact Color caulk for a small project or one tube per 400 square feet on larger projects. [Source](https://genstone.com/how-to-install/adhesive-caulking-and-paint)
 - The detailed tips call for a 3/16-inch gap between cut GenStone edges and trim, windows, doors, steps, or similar terminations, followed by touch-up paint and matching caulk. [Source](https://genstone.com/how-to-install/tips-to-finish-like-a-pro)
@@ -45,32 +44,16 @@
 
 - Standard GenStone interior and exterior panels are not fire-rated unless specifically stamped as Class A material. [Source](https://genstone.com/disclaimer)
 - Panels and accessories must not contact flames or embers, and appliance manufacturer clearances and local requirements must be followed. [Source](https://genstone.com/faq/can-genstone-be-used-around-fireplaces) [Source](https://on.genstone.com/genstone_warranty)
-- The website gives conflicting hand-on-surface tests of five seconds and ten seconds, while another page only says the surface must not be too hot to touch. Do not publish a numeric hand test until the owner confirms the approved rule. [Five-second source](https://genstone.com/faq/can-genstone-be-used-around-fireplaces) [Ten-second source](https://genstone.com/faq/is-genstone-fire-rated) [Non-numeric source](https://genstone.com/insights/design-ideas/faux-stone-fireplace)
 
 ## Water and Weather
 
-- Current FAQs describe GenStone as suitable for rain, snow, and temperature changes and say correctly installed panels are waterproof. [Source](https://genstone.com/faq/are-genstone-panels-weather-resistant) [Source](https://genstone.com/faq/are-genstone-panels-waterproof)
-- Weather resistance depends on correct adhesive, caulk, termination, fastener, and wall-assembly details. [Source](https://genstone.com/faq/are-genstone-panels-waterproof)
-- One FAQ says chimney installations require no flashing, while the detailed installation tips require proper flashing at openings and at the top of ledgers. These statements may describe different details but need owner clarification before giving broad flashing advice. [Source](https://genstone.com/faq/how-do-you-install-genstone-panels-on-a-chimney) [Source](https://genstone.com/how-to-install/tips-to-finish-like-a-pro)
+- Current FAQs describe GenStone as suitable for rain, snow, and temperature changes when installed correctly. [Source](https://genstone.com/faq/are-genstone-panels-weather-resistant)
+- Weather resistance depends on following the current product-specific instructions for adhesive, caulk, terminations, fasteners, openings, ledgers, and the surrounding wall assembly. [Source](https://genstone.com/how-to-install/tips-to-finish-like-a-pro)
 
 ## Cleaning and Preventive Care
 
 - Normal rainfall is often sufficient. For moderate dirt, the official care guide recommends clear water from a garden hose and a soft-bristled brush, with special attention to sheltered areas under eaves, porches, awnings, and other overhangs. [Source](https://genstone.com/wp-content/uploads/2020/11/GenStone-Products-Use-and-Care.pdf)
 - For heavier dirt, the guide lists a solution of 1/3 cup detergent or dish soap, 2/3 cup trisodium phosphate, and one gallon of water. Follow chemical manufacturer safety instructions. [Source](https://genstone.com/wp-content/uploads/2020/11/GenStone-Products-Use-and-Care.pdf)
-- For mildew, the guide refers to its basic cleaning solution with sodium hypochlorite, but the reviewed PDF does not display a sodium-hypochlorite quantity. Do not invent a concentration. [Source](https://genstone.com/wp-content/uploads/2020/11/GenStone-Products-Use-and-Care.pdf)
 - For caulk, tar, or similar substances, the guide allows reasonable amounts of mineral spirits applied directly to the substance, followed immediately by a thorough water rinse. Test any cleaner in an inconspicuous area first. [Source](https://genstone.com/wp-content/uploads/2020/11/GenStone-Products-Use-and-Care.pdf)
 - Avoid abrasive cleaners, strong solvents, excessive scrubbing, and stronger-than-recommended cleaner concentrations. Always rinse with clear water to minimize streaking. [Source](https://genstone.com/wp-content/uploads/2020/11/GenStone-Products-Use-and-Care.pdf)
 - Inspect GenStone at least yearly and touch up any exposed, unpainted raw material. The care guide also recommends a water-based concrete sealant every five years or at the first sign of fading. [Source](https://genstone.com/wp-content/uploads/2020/11/GenStone-Products-Use-and-Care.pdf)
-- The care guide names one sealant and says a similar water-based concrete sealant may be used, but also calls for written approval before using another brand. Confirm the approved current sealant policy before naming alternatives. [Source](https://genstone.com/wp-content/uploads/2020/11/GenStone-Products-Use-and-Care.pdf)
-
-## Transcript-Driven Installation Guardrails
-
-The calls show recurring applications that need diagrams or explicit boundaries; caller and answering-agent statements are not treated as technical approval. [Transcript evidence](../raw/transcripts/transcript-findings.md)
-
-- A fireplace intake should capture appliance type/model, manufacturer clearances, combustible/noncombustible zones, front opening, wall returns/depth, outside/inside corners, mantel/TV/hearth, substrate, and terminal-edge treatment before estimating.
-- GenStone is decorative veneer, not a substitute for a listed wood-stove wall-protection system, structural retaining wall, drainage plane, waterproofing system, chimney flashing, or engineered substrate.
-- Provide approved terminal details for cut edges at fireplace openings, doors, windows, steps, conventional siding, and freestanding vertical accents.
-- Confirm whether fingered corners may be installed as standalone columns/accents and, if allowed, show the approved return/filler treatment.
-- Estimates should expose net area, opening deductions, per-panel coverage, whole-piece corner counts, course height, accessory quantities, and waste/layout assumptions. Validate units and arithmetic before ordering.
-- Paint-kit instructions should identify each container, sequence or mixing, application method, compatible products/substrates, safety, cleanup, and whether decorative non-GenStone uses are supported.
-- Do not advise repainting or sealing an older/faded installation until the current approved process and warranty consequences are confirmed.
