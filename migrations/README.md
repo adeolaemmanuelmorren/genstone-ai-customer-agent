@@ -11,3 +11,8 @@ paths, and generated database types.
 to use recoverable leases and call-and-request-scoped idempotency, adds
 searchable Retell post-call fields, and removes the unused support-case token
 table.
+
+`0004_order_candidate_sets.sql` groups the candidates returned by one order
+search, preserves their caller-safe type and status summaries, and indexes the
+call-scoped sequence so a rejected candidate can advance without another
+WooCommerce request.

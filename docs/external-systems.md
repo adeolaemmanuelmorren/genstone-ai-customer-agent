@@ -12,8 +12,9 @@ Detailed discovery evidence is preserved in
 | Salesforce | Identify existing contacts and find active employees requested by name | Contacts; active Users and their direct phone numbers | None during a call |
 | WooCommerce | Verify an existing order and answer confirmed order or stored-shipment questions | Orders, line items, order contact, stored shipment fields | None during a call |
 | WordPress / WooCommerce | Source approved product facts | Product content and product records | None during a call |
-| Zendesk | Track support work requiring ownership and resolution | Open cases related to the confirmed contact | Create one case or update the matching case |
+| Zendesk | Track support work requiring ownership and resolution | None required during the call | Create the call's first private ticket; append related later details to it |
 | Customer.io | Deliver approved transactional email | None | Internal new-project callback, unmatched-prospect, and case-created notices; customer shipment details when requested |
+| Slack | Alert internal ownership when callback delivery fails | None | Private callback-failure message to Travis |
 | Five9 | Record do-not-call requests | None required for the caller flow | Add confirmed phone number to DNC |
 | Retell | Run the Conversation Flow agent and phone call | Call state and dynamic variables | Invoke tools and transfer a call |
 
@@ -33,9 +34,11 @@ Salesforce also owns the named-person transfer directory:
 - Use the employee's direct phone number as the Retell transfer destination.
 - Active means the person still works for GenStone. It does not prove they are
   presently available.
-- If no unique active match, no direct number, or the transfer fails, resume the
-  normal primary route. Do not bypass new-project help, order verification, or
-  the ordinary follow-up decision gates.
+- A partial name is accepted when Salesforce returns exactly one eligible User.
+  If multiple Users match, ask once for the employee's full name and retry.
+- If the retry is still ambiguous, no active User matches, there is no direct
+  number, or the transfer fails, resume the interrupted conversation. Do not
+  bypass new-project help, order verification, or ordinary follow-up gates.
 - Do not proactively ask callers to choose a person or department.
 
 ## WooCommerce Orders And Shipments
@@ -114,11 +117,10 @@ orders.
 
 Confirmed launch behavior:
 
-- Search primarily by confirmed contact and present relevant open cases to the
-  agent.
-- The agent decides from the current issue and case summary whether this is the
-  same matter or a different one.
-- Update the matching case for the same matter; otherwise create one case.
+- The first unresolved issue in a call creates one private ticket.
+- Related information supplied later in that same call appends a private
+  comment to that ticket.
+- Do not search or update tickets from earlier calls during the conversation.
 - Assign to the Support group with no specific assignee.
 - Use normal priority by default. Urgency is captured as factual context.
 - Use native Type `Question`.
@@ -171,6 +173,11 @@ an internal recipient.
 
 No callback confirmation, prospect confirmation, or general support email is
 sent to the customer by this application.
+
+If Customer.io cannot deliver an internal callback request, the Worker attempts
+a private Slack alert to Travis containing the callback details. The Retell
+flow uses the approved consolidated callback-failure statement and ends after
+the failure.
 
 ## Five9 Do-Not-Call
 

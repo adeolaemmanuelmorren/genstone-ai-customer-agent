@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   hasValidIdempotencyScope,
   readExistingExecution,
+  resultForRetell,
   stableJson,
 } from "./retell-tool-routes";
 
@@ -37,5 +38,26 @@ describe("Retell tool idempotency", () => {
     expect(stableJson({ call_id: "call-a", time: "10:00" })).not.toBe(
       stableJson({ call_id: "call-a", time: "11:00" }),
     );
+  });
+});
+
+describe("Retell tool response privacy", () => {
+  it("keeps the safe result while removing hidden provider data", () => {
+    const result = {
+      ok: true,
+      result_code: "found",
+      safe_summary: "Your order has shipped.",
+      data: {
+        carrier: "FedEx",
+        tracking_numbers: ["secret-tracking-number"],
+      },
+    };
+
+    expect(resultForRetell(result, true)).toEqual({
+      ok: true,
+      result_code: "found",
+      safe_summary: "Your order has shipped.",
+    });
+    expect(resultForRetell(result, false)).toEqual(result);
   });
 });

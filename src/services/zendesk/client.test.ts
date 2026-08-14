@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CustomerAgentEnv } from "../../types/env";
-import { createZendeskCase } from "./client";
+import { appendPrivateZendeskComment, createZendeskCase } from "./client";
 
 const env = {
   ZENDESK_GENSTONE_API_EMAIL: "service@example.com",
@@ -52,6 +52,28 @@ describe("Zendesk answering-service tickets", () => {
       { id: 360_026_303_754, value: "answering_service" },
       { id: 360_026_226_033, value: "united_states" },
     ]);
+  });
+
+  it("appends later call details as a private comment", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ticketResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await appendPrivateZendeskComment(env, {
+      ticketId: "123",
+      privateComment: "Two additional units were reported broken.",
+    });
+
+    const [url, request] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v2/tickets/123.json");
+    expect(request.method).toBe("PUT");
+    expect(JSON.parse(String(request.body))).toEqual({
+      ticket: {
+        comment: {
+          body: "Two additional units were reported broken.",
+          public: false,
+        },
+      },
+    });
   });
 });
 

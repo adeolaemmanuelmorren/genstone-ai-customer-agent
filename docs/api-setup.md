@@ -6,14 +6,15 @@
 | --- | --- | --- | --- |
 | `GET /health` | Public health | None | Liveness and deploy verification. |
 | `POST /v1/retell/webhooks` | Provider webhook | `X-Retell-Signature` over the exact raw body | Archive and process Retell events. |
+| `POST /v1/retell/tools/business-hours/status` | Retell tool | Worker bearer plus Retell signature | Determine live-transfer availability using GenStone's Mountain-time hours and standard holidays. |
 | `POST /v1/retell/tools/contacts/lookup` | Retell tool | Worker bearer plus Retell signature | Salesforce contact lookup. |
 | `POST /v1/retell/tools/employees/lookup` | Retell tool | Worker bearer plus Retell signature | Active employee lookup. |
-| `POST /v1/retell/tools/orders/lookup` | Retell tool | Worker bearer plus Retell signature | WooCommerce order candidate lookup. |
+| `POST /v1/retell/tools/orders/lookup` | Retell tool | Worker bearer plus Retell signature | WooCommerce order lookup by confirmed phone, exact email, or order number; retained-candidate traversal uses the same route. |
 | `POST /v1/retell/tools/shipments/lookup` | Retell tool | Worker bearer plus Retell signature | Verified stored shipment lookup. |
-| `POST /v1/retell/tools/callbacks/schedule` | Retell tool | Worker bearer plus Retell signature | Customer.io callback request. |
+| `POST /v1/retell/tools/callbacks/schedule` | Retell tool | Worker bearer plus Retell signature | Customer.io callback request with private Slack escalation on delivery failure. |
 | `POST /v1/retell/tools/prospects/follow-up` | Retell tool | Worker bearer plus Retell signature | Internal Customer.io follow-up for a confirmed unmatched new prospect. |
 | `POST /v1/retell/tools/shipments/email` | Retell tool | Worker bearer plus Retell signature | Customer.io shipment email. |
-| `POST /v1/retell/tools/support/cases` | Retell tool | Worker bearer plus Retell signature | Create one private Zendesk answering-service ticket and send its internal notice. |
+| `POST /v1/retell/tools/support/follow-up` | Retell tool | Worker bearer plus Retell signature | Create the call's first private Zendesk follow-up or append a private comment with related later details. |
 | `POST /v1/retell/tools/dnc/suppress` | Retell tool | Worker bearer plus Retell signature | Five9 DNC suppression. |
 
 ## Route Classes

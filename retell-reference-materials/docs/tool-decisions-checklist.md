@@ -65,8 +65,8 @@ handled by one of these outcomes:
 2. verify and answer from WooCommerce;
 3. email stored shipment details after the caller requests it;
 4. schedule a centralized callback/internal message for a new project;
-5. create one new private Zendesk support ticket for an unresolved existing
-   order;
+5. create the call's first private Zendesk support ticket for an unresolved
+   existing order and append related later call details as private comments;
 6. transfer to the explicitly named active employee;
 7. record DNC; or
 8. capture an unsupported capability as follow-up context.

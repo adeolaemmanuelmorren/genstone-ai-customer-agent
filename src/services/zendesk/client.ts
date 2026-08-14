@@ -80,6 +80,31 @@ export async function getZendeskCase(
   return readTicketResponse(response, "read");
 }
 
+export async function appendPrivateZendeskComment(
+  env: CustomerAgentEnv,
+  input: {
+    ticketId: string;
+    privateComment: string;
+  },
+): Promise<ZendeskCase> {
+  const url = new URL(
+    `${ZENDESK_BASE_URL}/tickets/${encodeURIComponent(input.ticketId)}.json`,
+  );
+  const response = await zendeskFetch(env, url, {
+    method: "PUT",
+    body: JSON.stringify({
+      ticket: {
+        comment: {
+          body: input.privateComment,
+          public: false,
+        },
+      },
+    }),
+  });
+
+  return readTicketResponse(response, "update");
+}
+
 function buildTicketTags(metadata: ZendeskTicketMetadata): string[] {
   return [
     ANSWER_CONNECT_TAG,

@@ -29,7 +29,7 @@ export interface StoredShipment {
 export async function findWooOrders(
   env: CustomerAgentEnv,
   input: {
-    identifierType: "caller_phone" | "alternate_phone" | "order_number";
+    identifierType: "phone" | "email" | "order_number";
     identifier: string;
   },
 ): Promise<WooOrderCandidate[]> {
@@ -38,42 +38,23 @@ export async function findWooOrders(
     return order ? [await includeSiblingOrder(env, order)] : [];
   }
 
+  if (input.identifierType === "email") {
+    const email = normalizeEmail(input.identifier);
+    if (!email) {
+      return [];
+    }
+
+    const orders = await searchWooOrders(env, email);
+    const matches = orders.filter((order) => normalizeEmail(order.email) === email);
+    return Promise.all(matches.map((order) => includeSiblingOrder(env, order)));
+  }
+
   const normalizedPhone = normalizeUsPhone(input.identifier);
   if (!normalizedPhone) {
     return [];
   }
 
-  let primaryFailure: unknown;
-  try {
-    const primaryOrders = await searchWooOrders(env, normalizedPhone);
-    const primaryMatches = filterOrdersByPhone(primaryOrders, normalizedPhone);
-    if (primaryMatches.length > 0) {
-      return Promise.all(primaryMatches.map((order) => includeSiblingOrder(env, order)));
-    }
-  } catch (error) {
-    primaryFailure = error;
-  }
-
-  const responses = await Promise.allSettled(
-    createPhoneSearchVariants(normalizedPhone)
-      .slice(1)
-      .map((variant) => searchWooOrders(env, variant)),
-  );
-  const successfulResponses = responses.flatMap((response) =>
-    response.status === "fulfilled" ? [response.value] : []
-  );
-
-  if (successfulResponses.length === 0) {
-    const firstFailure = responses.find((response) => response.status === "rejected");
-    throw primaryFailure ?? firstFailure?.reason ?? new Error("Order lookup failed.");
-  }
-
-  const uniqueOrders = new Map<string, WooOrderCandidate>();
-  for (const order of successfulResponses.flat()) {
-    uniqueOrders.set(order.id, order);
-  }
-
-  const matches = filterOrdersByPhone([...uniqueOrders.values()], normalizedPhone);
+  const matches = await findFirstPhoneMatches(env, normalizedPhone);
   return Promise.all(matches.map((order) => includeSiblingOrder(env, order)));
 }
 
@@ -149,6 +130,54 @@ export function normalizeUsPhone(value: string | undefined): string | undefined 
   }
 
   return digits.length === 10 ? digits : undefined;
+}
+
+function normalizeEmail(value: string | undefined): string | undefined {
+  const normalized = value?.trim().toLowerCase();
+  return normalized && normalized.includes("@") ? normalized : undefined;
+}
+
+
+async function findFirstPhoneMatches(
+  env: CustomerAgentEnv,
+  normalizedPhone: string,
+): Promise<WooOrderCandidate[]> {
+  const variants = createPhoneSearchVariants(normalizedPhone);
+
+  return new Promise((resolve, reject) => {
+    let completed = 0;
+    let successfulSearches = 0;
+    let firstFailure: unknown;
+    let settled = false;
+
+    for (const variant of variants) {
+      void searchWooOrders(env, variant)
+        .then((orders) => {
+          successfulSearches += 1;
+          const matches = filterOrdersByPhone(orders, normalizedPhone);
+          if (!settled && matches.length > 0) {
+            settled = true;
+            resolve(matches);
+          }
+        })
+        .catch((error: unknown) => {
+          firstFailure ??= error;
+        })
+        .finally(() => {
+          completed += 1;
+          if (settled || completed < variants.length) {
+            return;
+          }
+
+          if (successfulSearches > 0) {
+            resolve([]);
+            return;
+          }
+
+          reject(firstFailure ?? new Error("Order lookup failed."));
+        });
+    }
+  });
 }
 
 function parseWooOrder(value: unknown): WooOrderCandidate[] {

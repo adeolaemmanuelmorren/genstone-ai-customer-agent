@@ -8,7 +8,8 @@ Services own product behavior behind the HTTP boundary.
 - `tools` coordinates the approved Retell tools without exposing provider
   identifiers or errors.
 - Provider-specific clients own Salesforce, WooCommerce, Customer.io, Zendesk,
-  and Five9 protocol details.
+  Five9, and Slack protocol details. Slack is used only for the terminal
+  callback-delivery failure alert.
 
 Routes call services. Services may call provider adapters and focused
 repositories. Do not create one repository or client that owns the entire

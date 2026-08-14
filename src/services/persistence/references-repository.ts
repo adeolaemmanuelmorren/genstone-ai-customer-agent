@@ -12,10 +12,14 @@ export interface ContactReference {
 
 export interface OrderReference {
   token: string;
+  lookupId?: string;
+  candidateRank?: number;
   wooOrderId: string;
   orderNumber: string;
   orderEmail?: string;
   orderPhone?: string;
+  orderTypeSummary?: string;
+  orderStatusSummary?: string;
   items: Array<{ name: string; quantity: number }>;
 }
 
@@ -89,46 +93,75 @@ export async function getContactReference(
   };
 }
 
-export async function storeOrderReference(
+export async function storeOrderReferences(
   db: Queryable,
-  input: Omit<OrderReference, "token"> & { companyId: string; callId: string },
-): Promise<OrderReference> {
-  const token = crypto.randomUUID();
+  input: {
+    companyId: string;
+    callId: string;
+    orders: Array<Omit<OrderReference, "token" | "lookupId" | "candidateRank">>;
+  },
+): Promise<OrderReference[]> {
+  if (input.orders.length === 0) {
+    return [];
+  }
+
+  const lookupId = crypto.randomUUID();
+  const references = input.orders.map((order, candidateRank) => ({
+    ...order,
+    token: crypto.randomUUID(),
+    lookupId,
+    candidateRank,
+  }));
+
+  const values: unknown[] = [];
+  const rows = references.map((reference, index) => {
+    const offset = index * 13;
+    values.push(
+      reference.token,
+      input.companyId,
+      input.callId,
+      reference.lookupId,
+      reference.candidateRank,
+      reference.wooOrderId,
+      reference.orderNumber,
+      reference.orderEmail ?? null,
+      reference.orderPhone ?? null,
+      reference.orderTypeSummary ?? null,
+      reference.orderStatusSummary ?? null,
+      JSON.stringify(reference.items),
+      new Date(Date.now() + TOKEN_LIFETIME_MS),
+    );
+
+    const placeholders = Array.from(
+      { length: 13 },
+      (_, valueIndex) => `$${offset + valueIndex + 1}`,
+    );
+    placeholders[11] = `${placeholders[11]}::jsonb`;
+    return `(${placeholders.join(", ")})`;
+  });
+
   await db.query(
     `
       insert into genstone_customer_agent.order_candidates (
         token,
         company_id,
         call_id,
+        lookup_id,
+        candidate_rank,
         woo_order_id,
         order_number,
         order_email,
         order_phone,
+        order_type_summary,
+        order_status_summary,
         caller_safe_items,
         expires_at
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
+      ) values ${rows.join(", ")}
     `,
-    [
-      token,
-      input.companyId,
-      input.callId,
-      input.wooOrderId,
-      input.orderNumber,
-      input.orderEmail ?? null,
-      input.orderPhone ?? null,
-      JSON.stringify(input.items),
-      new Date(Date.now() + TOKEN_LIFETIME_MS),
-    ],
+    values,
   );
 
-  return {
-    token,
-    wooOrderId: input.wooOrderId,
-    orderNumber: input.orderNumber,
-    orderEmail: input.orderEmail,
-    orderPhone: input.orderPhone,
-    items: input.items,
-  };
+  return references;
 }
 
 export async function getOrderReference(
@@ -139,14 +172,19 @@ export async function getOrderReference(
 ): Promise<OrderReference | undefined> {
   const result = await db.query<{
     token: string;
+    lookup_id: string | null;
+    candidate_rank: number | null;
     woo_order_id: string;
     order_number: string;
     order_email: string | null;
     order_phone: string | null;
+    order_type_summary: string | null;
+    order_status_summary: string | null;
     caller_safe_items: Array<{ name: string; quantity: number }>;
   }>(
     `
-      select token, woo_order_id, order_number, order_email, order_phone,
+      select token, lookup_id, candidate_rank, woo_order_id, order_number,
+             order_email, order_phone, order_type_summary, order_status_summary,
              caller_safe_items
       from genstone_customer_agent.order_candidates
       where company_id = $1
@@ -163,10 +201,122 @@ export async function getOrderReference(
 
   return {
     token: row.token,
+    lookupId: row.lookup_id ?? undefined,
+    candidateRank: row.candidate_rank ?? undefined,
     wooOrderId: row.woo_order_id,
     orderNumber: row.order_number,
     orderEmail: row.order_email ?? undefined,
     orderPhone: row.order_phone ?? undefined,
+    orderTypeSummary: row.order_type_summary ?? undefined,
+    orderStatusSummary: row.order_status_summary ?? undefined,
+    items: row.caller_safe_items,
+  };
+}
+
+export async function confirmOrderReference(
+  db: Queryable,
+  companyId: string,
+  callId: string,
+  token: string,
+): Promise<OrderReference | undefined> {
+  const result = await db.query<{ token: string }>(
+    `
+      update genstone_customer_agent.order_candidates
+      set order_verified = true,
+          updated_at = now()
+      where company_id = $1
+        and call_id = $2
+        and token = $3
+        and expires_at > now()
+      returning token
+    `,
+    [companyId, callId, token],
+  );
+
+  if (!result.rows[0]) {
+    return undefined;
+  }
+
+  return getOrderReference(db, companyId, callId, token);
+}
+
+export async function getVerifiedOrderReference(
+  db: Queryable,
+  companyId: string,
+  callId: string,
+  token: string,
+): Promise<OrderReference | undefined> {
+  const result = await db.query<{ token: string }>(
+    `
+      select token
+      from genstone_customer_agent.order_candidates
+      where company_id = $1
+        and call_id = $2
+        and token = $3
+        and order_verified = true
+        and expires_at > now()
+    `,
+    [companyId, callId, token],
+  );
+
+  if (!result.rows[0]) {
+    return undefined;
+  }
+
+  return getOrderReference(db, companyId, callId, token);
+}
+
+export async function getNextOrderReference(
+  db: Queryable,
+  companyId: string,
+  callId: string,
+  previousToken: string,
+): Promise<OrderReference | undefined> {
+  const previous = await getOrderReference(db, companyId, callId, previousToken);
+  if (!previous?.lookupId || previous.candidateRank === undefined) {
+    return undefined;
+  }
+
+  const result = await db.query<{
+    token: string;
+    lookup_id: string;
+    candidate_rank: number;
+    woo_order_id: string;
+    order_number: string;
+    order_email: string | null;
+    order_phone: string | null;
+    order_type_summary: string | null;
+    order_status_summary: string | null;
+    caller_safe_items: Array<{ name: string; quantity: number }>;
+  }>(
+    `
+      select token, lookup_id, candidate_rank, woo_order_id, order_number,
+             order_email, order_phone, order_type_summary, order_status_summary,
+             caller_safe_items
+      from genstone_customer_agent.order_candidates
+      where company_id = $1
+        and call_id = $2
+        and lookup_id = $3
+        and candidate_rank = $4
+        and expires_at > now()
+    `,
+    [companyId, callId, previous.lookupId, previous.candidateRank + 1],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    return undefined;
+  }
+
+  return {
+    token: row.token,
+    lookupId: row.lookup_id,
+    candidateRank: row.candidate_rank,
+    wooOrderId: row.woo_order_id,
+    orderNumber: row.order_number,
+    orderEmail: row.order_email ?? undefined,
+    orderPhone: row.order_phone ?? undefined,
+    orderTypeSummary: row.order_type_summary ?? undefined,
+    orderStatusSummary: row.order_status_summary ?? undefined,
     items: row.caller_safe_items,
   };
 }

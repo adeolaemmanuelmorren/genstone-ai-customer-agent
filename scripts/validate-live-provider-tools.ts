@@ -163,7 +163,7 @@ async function runAuthorizedWrites(options: Options, callId: string) {
   const checks: SafeCheck[] = [];
   const supportSummary =
     "AUTHORIZED QA TEST — verify GenStone Zendesk task creation for adeola@datastacklabs.com. No customer action is required.";
-  const zendesk = await callTool("/v1/retell/tools/support/cases", {
+  const zendesk = await callTool("/v1/retell/tools/support/follow-up", {
     call_id: callId,
     idempotency_key: `${callId}:zendesk-authorized-qa`,
     primary_route: "existing_order",

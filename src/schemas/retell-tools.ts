@@ -36,7 +36,6 @@ function normalizeBoolean(value: unknown): unknown {
   return value;
 }
 
-const dynamicBoolean = z.preprocess(normalizeBoolean, z.boolean());
 const confirmedDynamicBoolean = z.preprocess(normalizeBoolean, z.literal(true));
 
 export const callerTypeSchema = z.enum([
@@ -66,21 +65,34 @@ export const employeeLookupSchema = z.object({
   employee_name: shortText,
 });
 
+export const businessHoursStatusSchema = z.object({
+  call_id: callId,
+});
+
 export const orderLookupSchema = z.object({
   call_id: callId,
-  identifier_type: z.enum(["caller_phone", "alternate_phone", "order_number"]),
-  identifier: shortText,
-  previous_order_candidate_token: optionalDynamic(
-    z.string().trim().min(1).max(200),
-  ),
+  identifier_type: optionalDynamic(z.enum(["phone", "email", "order_number"])),
+  identifier: optionalDynamic(shortText),
+  previous_order_candidate_token: optionalDynamic(z.string().trim().min(1).max(200)),
+}).superRefine((value, context) => {
+  if (value.previous_order_candidate_token) {
+    return;
+  }
+
+  if (!value.identifier_type || !value.identifier) {
+    context.addIssue({
+      code: "custom",
+      message: "A confirmed phone, email, or order number is required.",
+    });
+  }
 });
 
 export const verifiedOrderSchema = z.object({
   call_id: callId,
   order_candidate_token: z.string().trim().min(1).max(200),
-  order_items_confirmed: dynamicBoolean,
-  order_verified: dynamicBoolean,
 });
+
+export const orderConfirmationSchema = verifiedOrderSchema;
 
 export const callbackScheduleSchema = z.object({
   call_id: callId,
@@ -93,7 +105,6 @@ export const callbackScheduleSchema = z.object({
   callback_time: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d$/u),
   callback_phone: phone,
   customer_email: email,
-  callback_confirmed: confirmedDynamicBoolean,
   communication_preference: optionalDynamic(z.string().trim().max(200)),
   urgency_context: optionalDynamic(z.string().trim().max(1000)),
 });
@@ -111,17 +122,14 @@ export const prospectFollowUpSchema = z.object({
 
 export const shipmentEmailSchema = verifiedOrderSchema.extend({
   idempotency_key: idempotencyKey,
-  shipment_email_requested: confirmedDynamicBoolean,
   shipment_email: email,
 });
 
-export const supportCaseCreateSchema = z.object({
+export const supportFollowUpSchema = z.object({
   call_id: callId,
   idempotency_key: idempotencyKey,
   primary_route: existingOrderRoute,
   order_candidate_token: optionalDynamic(z.string().trim().min(1).max(200)),
-  order_items_confirmed: optionalDynamic(dynamicBoolean),
-  order_verified: optionalDynamic(dynamicBoolean),
   customer_name: shortText,
   confirmed_phone: phone,
   customer_email: email,
@@ -132,6 +140,7 @@ export const supportCaseCreateSchema = z.object({
   urgency_context: optionalDynamic(z.string().trim().max(1000)),
 }).strict();
 
+
 export const dncSuppressSchema = z.object({
   call_id: callId,
   idempotency_key: idempotencyKey,
@@ -141,10 +150,12 @@ export const dncSuppressSchema = z.object({
 
 export type ContactLookupInput = z.infer<typeof contactLookupSchema>;
 export type EmployeeLookupInput = z.infer<typeof employeeLookupSchema>;
+export type BusinessHoursStatusInput = z.infer<typeof businessHoursStatusSchema>;
 export type OrderLookupInput = z.infer<typeof orderLookupSchema>;
+export type OrderConfirmationInput = z.infer<typeof orderConfirmationSchema>;
 export type VerifiedOrderInput = z.infer<typeof verifiedOrderSchema>;
 export type CallbackScheduleInput = z.infer<typeof callbackScheduleSchema>;
 export type ProspectFollowUpInput = z.infer<typeof prospectFollowUpSchema>;
 export type ShipmentEmailInput = z.infer<typeof shipmentEmailSchema>;
-export type SupportCaseCreateInput = z.infer<typeof supportCaseCreateSchema>;
+export type SupportFollowUpInput = z.infer<typeof supportFollowUpSchema>;
 export type DncSuppressInput = z.infer<typeof dncSuppressSchema>;

@@ -47,7 +47,7 @@ describe("WooCommerce caller-safe helpers", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const orders = await findWooOrders(env, {
-      identifierType: "caller_phone",
+      identifierType: "phone",
       identifier: "+1 303 555 0100",
     });
 
@@ -69,7 +69,7 @@ describe("WooCommerce caller-safe helpers", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const orders = await findWooOrders(env, {
-      identifierType: "caller_phone",
+      identifierType: "phone",
       identifier: "+1 303 555 0100",
     });
 
@@ -84,9 +84,28 @@ describe("WooCommerce caller-safe helpers", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(findWooOrders(env, {
-      identifierType: "caller_phone",
+      identifierType: "phone",
       identifier: "+1 303 555 0100",
     })).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("finds orders by an exact normalized billing email", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([
+      wooOrderPayload("3035550100", "Customer@Example.com"),
+      wooOrderPayload("3035550101", "someone-else@example.com", 124),
+    ])));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const orders = await findWooOrders(env, {
+      identifierType: "email",
+      identifier: " customer@example.com ",
+    });
+
+    expect(orders).toHaveLength(1);
+    expect(orders[0]?.number).toBe("123");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "search=customer%40example.com",
+    );
   });
 
   it("normalizes shipped dates and builds approved carrier links", () => {
@@ -116,11 +135,15 @@ function wooOrderResponse(phone = "3035550100"): Response {
   return new Response(JSON.stringify(wooOrderPayload(phone)));
 }
 
-function wooOrderPayload(phone = "3035550100") {
+function wooOrderPayload(
+  phone = "3035550100",
+  email = "customer@example.com",
+  id = 123,
+) {
   return {
-    id: 123,
-    number: "123",
-    billing: { phone, email: "customer@example.com" },
+    id,
+    number: String(id),
+    billing: { phone, email },
     line_items: [{ name: "Panel", quantity: 2 }],
     meta_data: [],
   };

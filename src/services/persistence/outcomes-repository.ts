@@ -1,5 +1,30 @@
 import type { Queryable } from "./db";
 
+export async function findLatestOutcomeExternalReference(
+  db: Queryable,
+  input: {
+    companyId: string;
+    callId: string;
+    outcomeType: string;
+  },
+): Promise<string | undefined> {
+  const result = await db.query<{ external_reference: string | null }>(
+    `
+      select external_reference
+      from genstone_customer_agent.outcomes
+      where company_id = $1
+        and call_id = $2
+        and outcome_type = $3
+        and external_reference is not null
+      order by created_at desc
+      limit 1
+    `,
+    [input.companyId, input.callId, input.outcomeType],
+  );
+
+  return result.rows[0]?.external_reference ?? undefined;
+}
+
 export async function recordOutcome(
   db: Queryable,
   input: {

@@ -4,13 +4,15 @@ import { sha256Hex } from "../../lib/crypto";
 import { createLogger } from "../../lib/observability/logger";
 import {
   callbackScheduleSchema,
+  businessHoursStatusSchema,
   contactLookupSchema,
   dncSuppressSchema,
   employeeLookupSchema,
+  orderConfirmationSchema,
   orderLookupSchema,
   prospectFollowUpSchema,
   shipmentEmailSchema,
-  supportCaseCreateSchema,
+  supportFollowUpSchema,
   verifiedOrderSchema,
 } from "../../schemas/retell-tools";
 import { getCompanyId, withDatabase, type Queryable } from "../../services/persistence/db";
@@ -23,14 +25,16 @@ import {
 import { verifyRetellSignature } from "../../services/retell/signature";
 import {
   emailShipmentTool,
+  businessHoursStatusTool,
   lookupContactTool,
   lookupEmployeeTool,
   lookupOrderTool,
   lookupShipmentTool,
+  confirmOrderTool,
   scheduleCallbackTool,
   sendProspectFollowUpTool,
   suppressDncTool,
-  createSupportCaseTool,
+  recordSupportFollowUpTool,
 } from "../../services/tools/retell-tools";
 import type { CustomerAgentEnv } from "../../types/env";
 import { failureResult, successResult, type ToolResult } from "../../types/tool-result";
@@ -63,10 +67,17 @@ export function registerRetellToolRoutes(
   app: Hono<{ Bindings: CustomerAgentEnv }>,
 ): void {
   registerTool(app, {
+    route: "/v1/retell/tools/business-hours/status",
+    toolName: "check_business_hours",
+    schema: businessHoursStatusSchema,
+    handler: businessHoursStatusTool,
+  });
+  registerTool(app, {
     route: "/v1/retell/tools/contacts/lookup",
     toolName: "lookup_contact",
     schema: contactLookupSchema,
     handler: lookupContactTool,
+    hideResultDataFromRetell: true,
   });
   registerTool(app, {
     route: "/v1/retell/tools/employees/lookup",
@@ -81,10 +92,17 @@ export function registerRetellToolRoutes(
     handler: lookupOrderTool,
   });
   registerTool(app, {
+    route: "/v1/retell/tools/orders/confirm",
+    toolName: "confirm_order",
+    schema: orderConfirmationSchema,
+    handler: confirmOrderTool,
+  });
+  registerTool(app, {
     route: "/v1/retell/tools/shipments/lookup",
     toolName: "lookup_shipment",
     schema: verifiedOrderSchema,
     handler: lookupShipmentTool,
+    hideResultDataFromRetell: true,
   });
   registerTool(app, {
     route: "/v1/retell/tools/callbacks/schedule",
@@ -108,10 +126,10 @@ export function registerRetellToolRoutes(
     outcome: { type: "shipment_email", provider: "customerio" },
   });
   registerTool(app, {
-    route: "/v1/retell/tools/support/cases",
-    toolName: "create_support_case",
-    schema: supportCaseCreateSchema,
-    handler: createSupportCaseTool,
+    route: "/v1/retell/tools/support/follow-up",
+    toolName: "record_support_follow_up",
+    schema: supportFollowUpSchema,
+    handler: recordSupportFollowUpTool,
     outcome: { type: "tracked_support", provider: "zendesk" },
     hideResultDataFromRetell: true,
   });
@@ -218,7 +236,7 @@ function registerTool<TInput extends ToolInput>(
   });
 }
 
-function resultForRetell(result: ToolResult, hideData = false): ToolResult {
+export function resultForRetell(result: ToolResult, hideData = false): ToolResult {
   if (!hideData || !result.data) {
     return result;
   }

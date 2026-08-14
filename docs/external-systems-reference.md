@@ -686,9 +686,12 @@ Owner task: Customer.io transactional-email discovery
   transactional message id, internal request reference, and normalized result
   for audit and later delivery-status reconciliation.
 - For a callback, return `scheduled` only after Customer.io accepts the internal
-  manager email. If that send fails, return `delivery_failed`. An exact replay
-  returns the original `scheduled` result without sending again. Never expose
-  raw Customer.io errors or provider ids to the caller.
+  manager email. If that send fails, attempt the private Slack alert to Travis
+  and return `delivery_failed_notified` or `delivery_failed_unnotified`. An
+  exact replay returns the original result without sending again. Never expose
+  raw Customer.io or Slack errors or provider ids to the caller. Both failure
+  results use the approved consolidated callback-failure statement and end the
+  call.
 - For tracking details, return `sent` only after Customer.io accepts the
   message; otherwise return `shipment_unavailable`, `validation_failed`, or
   `delivery_failed` as appropriate. An exact replay returns the original result

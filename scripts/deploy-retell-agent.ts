@@ -5,21 +5,23 @@ import type {
 import type {
   ConversationFlowComponentResponse,
 } from "retell-sdk/resources/conversation-flow-component";
-import type {
-  ConversationFlowResponse,
-} from "retell-sdk/resources/conversation-flow";
+import type { ConversationFlowResponse } from "retell-sdk/resources/conversation-flow";
 
 import {
   buildAgentConfig,
   buildConversationFlowConfig,
   buildSharedComponentConfigs,
   RETELL_BUILD_CONSTANTS,
-  type RetellSharedComponentBuild,
-  type RetellSharedComponentIds,
+  type RetellComponentBuild,
+  type RetellComponentIds,
 } from "../retell/build-config.js";
 import { assertExpectedConfig } from "./retell-config-readback.js";
 
-const AGENT_NAME = "GenStone Customer Agent";
+const AGENT_BASE_NAME =
+  process.env.RETELL_AGENT_NAME?.trim() || "GenStone Customer Agent";
+const AGENT_NAME = `${AGENT_BASE_NAME} — ${RETELL_BUILD_CONSTANTS.sharedComponentRelease}`;
+const AGENT_ID = process.env.RETELL_AGENT_ID?.trim()
+  || "agent_4863348a135c633285041a504b";
 const LIST_PAGE_SIZE = 100;
 
 function requireEnvironmentVariable(name: string): string {
@@ -32,11 +34,39 @@ function requireEnvironmentVariable(name: string): string {
   return value;
 }
 
-function validateExistingSharedComponent(
-  build: RetellSharedComponentBuild,
-  existing: ConversationFlowComponentResponse,
-): void {
-  assertExpectedConfig(build.config, existing, `Retell component ${build.config.name}`);
+async function findEditableAgent(client: Retell): Promise<{
+  agent: AgentResponse;
+  createdDraft: boolean;
+  baseVersion: number | null;
+}> {
+  const latestAgent = await client.agent.retrieve(AGENT_ID);
+
+  if (!latestAgent.is_published) {
+    return {
+      agent: latestAgent,
+      createdDraft: false,
+      baseVersion: latestAgent.base_version ?? null,
+    };
+  }
+
+  const newVersion = await client.agent.createVersion(AGENT_ID, {
+    base_version: latestAgent.version,
+  });
+  const draftAgent = await client.agent.retrieve(AGENT_ID, {
+    version: newVersion.version,
+  });
+
+  if (draftAgent.is_published) {
+    throw new Error(
+      `Retell agent version ${draftAgent.version} was expected to be an editable draft.`,
+    );
+  }
+
+  return {
+    agent: draftAgent,
+    createdDraft: true,
+    baseVersion: latestAgent.version,
+  };
 }
 
 async function listSharedComponents(
@@ -50,7 +80,6 @@ async function listSharedComponents(
       limit: LIST_PAGE_SIZE,
       pagination_key: paginationKey,
     });
-
     components.push(...(response.items ?? []));
     paginationKey = response.has_more ? response.pagination_key : undefined;
   } while (paginationKey);
@@ -60,18 +89,14 @@ async function listSharedComponents(
 
 async function resolveSharedComponents(
   client: Retell,
-  builds: RetellSharedComponentBuild[],
+  builds: RetellComponentBuild[],
 ): Promise<{
-  ids: RetellSharedComponentIds;
+  ids: RetellComponentIds;
   statuses: Array<{ name: string; id: string; status: "created" | "reused" }>;
 }> {
   const existingComponents = await listSharedComponents(client);
-  const ids = {} as RetellSharedComponentIds;
-  const statuses: Array<{
-    name: string;
-    id: string;
-    status: "created" | "reused";
-  }> = [];
+  const ids = {} as RetellComponentIds;
+  const statuses: Array<{ name: string; id: string; status: "created" | "reused" }> = [];
 
   for (const build of builds) {
     const matches = existingComponents.filter(
@@ -79,120 +104,64 @@ async function resolveSharedComponents(
     );
 
     if (matches.length > 1) {
-      throw new Error(
-        `Multiple Retell shared subflows are named ${build.config.name}. Refusing to choose one.`,
-      );
+      throw new Error(`Multiple Retell components are named ${build.config.name}.`);
     }
 
     const existing = matches[0];
-
     if (existing) {
       const retrieved = await client.conversationFlowComponent.retrieve(
         existing.conversation_flow_component_id,
       );
-      validateExistingSharedComponent(build, retrieved);
+      assertExpectedConfig(build.config, retrieved, `Retell component ${build.config.name}`);
       ids[build.componentName] = retrieved.conversation_flow_component_id;
-      statuses.push({
-        name: retrieved.name,
-        id: retrieved.conversation_flow_component_id,
-        status: "reused",
-      });
+      statuses.push({ name: retrieved.name, id: retrieved.conversation_flow_component_id, status: "reused" });
       continue;
     }
 
     const created = await client.conversationFlowComponent.create(build.config);
-    validateExistingSharedComponent(build, created);
+    assertExpectedConfig(build.config, created, `Retell component ${build.config.name}`);
     ids[build.componentName] = created.conversation_flow_component_id;
-    statuses.push({
-      name: created.name,
-      id: created.conversation_flow_component_id,
-      status: "created",
-    });
+    statuses.push({ name: created.name, id: created.conversation_flow_component_id, status: "created" });
   }
 
   return { ids, statuses };
 }
 
-async function findExistingAgent(client: Retell) {
-  let paginationKey: string | undefined;
-
-  do {
-    const response = await client.agent.list({
-      limit: LIST_PAGE_SIZE,
-      pagination_key: paginationKey,
-    });
-    const match = response.items?.find((agent) => agent.agent_name === AGENT_NAME);
-    if (match) {
-      return match;
-    }
-    paginationKey = response.has_more ? response.pagination_key : undefined;
-  } while (paginationKey);
-
-  return undefined;
-}
-
-async function listConversationFlows(
-  client: Retell,
-): Promise<ConversationFlowResponse[]> {
-  const flows: ConversationFlowResponse[] = [];
-  let paginationKey: string | undefined;
-
-  do {
-    const response = await client.conversationFlow.list({
-      limit: LIST_PAGE_SIZE,
-      pagination_key: paginationKey,
-    });
-
-    flows.push(...(response.items ?? []));
-    paginationKey = response.has_more ? response.pagination_key : undefined;
-  } while (paginationKey);
-
-  return flows;
-}
-
-function hasFlowReleaseMarker(flow: ConversationFlowResponse): boolean {
-  return (flow.notes ?? []).some(
-    (note) => note.id === RETELL_BUILD_CONSTANTS.flowRelease,
-  );
-}
-
 function validateExistingFlow(
   flow: ConversationFlowResponse,
-  sharedComponentIds: RetellSharedComponentIds,
+  componentIds: RetellComponentIds,
 ): void {
-  const expected = buildConversationFlowConfig({ sharedComponentIds });
+  const expected = buildConversationFlowConfig({ componentIds });
   assertExpectedConfig(expected, flow, "Retell conversation flow");
 }
 
-async function resolveConversationFlow(
+async function updateAgentDraftFlow(
   client: Retell,
-  sharedComponentIds: RetellSharedComponentIds,
-): Promise<{ flow: ConversationFlowResponse; status: "created" | "reused" }> {
-  const flows = await listConversationFlows(client);
-  const matches = flows.filter(hasFlowReleaseMarker);
+  agent: AgentResponse,
+  componentIds: RetellComponentIds,
+): Promise<ConversationFlowResponse> {
+  if (agent.response_engine.type !== "conversation-flow") {
+    throw new Error(`Agent ${agent.agent_id} does not use a Retell conversation flow.`);
+  }
 
-  if (matches.length > 1) {
+  const flowVersion = agent.response_engine.version;
+
+  if (flowVersion !== agent.version) {
     throw new Error(
-      `Multiple Retell flows use release marker ${RETELL_BUILD_CONSTANTS.flowRelease}. Refusing to choose one.`,
+      `Agent draft version ${agent.version} does not match its flow version ${flowVersion}.`,
     );
   }
 
-  const existing = matches[0];
-
-  if (existing) {
-    const retrieved = await client.conversationFlow.retrieve(
-      existing.conversation_flow_id,
-      { version: existing.version },
-    );
-    validateExistingFlow(retrieved, sharedComponentIds);
-    return { flow: retrieved, status: "reused" };
-  }
-
-  const created = await client.conversationFlow.create(
-    buildConversationFlowConfig({ sharedComponentIds }),
+  const updated = await client.conversationFlow.update(
+    agent.response_engine.conversation_flow_id,
+    {
+      ...buildConversationFlowConfig({ componentIds }),
+      version: flowVersion,
+    },
   );
-  validateExistingFlow(created, sharedComponentIds);
-  return { flow: created, status: "created" };
+
+  validateExistingFlow(updated, componentIds);
+  return updated;
 }
 
 async function main() {
@@ -202,50 +171,54 @@ async function main() {
   );
 
   const client = new Retell({ apiKey: retellApiKey });
-  const existingAgent = await findExistingAgent(client);
+  const editableAgent = await findEditableAgent(client);
 
   const sharedComponents = await resolveSharedComponents(
     client,
     buildSharedComponentConfigs({ workerApiKey }),
   );
-  const conversationFlow = await resolveConversationFlow(
+  const conversationFlow = await updateAgentDraftFlow(
     client,
+    editableAgent.agent,
     sharedComponents.ids,
   );
 
   let agent: AgentResponse;
-  let agentStatus: "created" | "updated";
 
   try {
     const agentConfig = buildAgentConfig(
-      conversationFlow.flow.conversation_flow_id,
-      conversationFlow.flow.version,
+      conversationFlow.conversation_flow_id,
+      conversationFlow.version,
+      AGENT_NAME,
     );
 
-    if (existingAgent) {
-      agent = await client.agent.update(existingAgent.agent_id, agentConfig);
-      agentStatus = "updated";
-    } else {
-      agent = await client.agent.create(agentConfig);
-      agentStatus = "created";
-    }
+    agent = await client.agent.update(editableAgent.agent.agent_id, {
+      ...agentConfig,
+      version: editableAgent.agent.version,
+    });
   } catch (error) {
     console.error(
-      `The Retell flow is available as ${conversationFlow.flow.conversation_flow_id}, but the agent draft could not be created or updated.`,
+      `The Retell flow is available as ${conversationFlow.conversation_flow_id}, but the agent draft could not be updated.`,
     );
     throw error;
   }
 
   try {
-    const verifiedAgent = await client.agent.retrieve(agent.agent_id);
+    const verifiedAgent = await client.agent.retrieve(agent.agent_id, {
+      version: agent.version,
+    });
     const verifiedFlow = await client.conversationFlow.retrieve(
-      conversationFlow.flow.conversation_flow_id,
-      { version: conversationFlow.flow.version },
+      conversationFlow.conversation_flow_id,
+      { version: conversationFlow.version },
     );
 
     validateExistingFlow(verifiedFlow, sharedComponents.ids);
     assertExpectedConfig(
-      buildAgentConfig(verifiedFlow.conversation_flow_id, verifiedFlow.version),
+      buildAgentConfig(
+        verifiedFlow.conversation_flow_id,
+        verifiedFlow.version,
+        AGENT_NAME,
+      ),
       verifiedAgent,
       "Retell agent",
     );
@@ -261,10 +234,13 @@ async function main() {
         {
           agent_id: verifiedAgent.agent_id,
           agent_name: verifiedAgent.agent_name,
-          agent_status: agentStatus,
+          agent_status: "updated",
+          agent_version: verifiedAgent.version,
+          base_version: editableAgent.baseVersion,
+          draft_created: editableAgent.createdDraft,
           conversation_flow_id: verifiedFlow.conversation_flow_id,
           conversation_flow_version: verifiedFlow.version,
-          conversation_flow_status: conversationFlow.status,
+          conversation_flow_status: "updated_in_place",
           shared_components: sharedComponents.statuses,
           knowledge_base_id: RETELL_BUILD_CONSTANTS.knowledgeBaseId,
           published: verifiedAgent.is_published ?? false,

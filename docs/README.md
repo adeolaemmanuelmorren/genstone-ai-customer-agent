@@ -10,14 +10,25 @@ The deployed runtime exposes:
 
 - `GET /health` for public deploy checks.
 - the signed Retell webhook archive;
-- nine signed and bearer-protected Retell tool routes;
+- signed and bearer-protected Retell tool routes, including business-hours,
+  unified support follow-up, and indexed WooCommerce order resolution;
 - Hyperdrive-backed product persistence and a private R2 archive binding;
 - focused Salesforce, WooCommerce, Customer.io, Zendesk, and Five9 clients.
 
 The Retell Conversation Flow deployment definition is present under `retell/`.
-The API-verified `v49` agent is published and its production Retell number is
-pinned to agent version `0`. Live phone-path and Twilio transfer QA remain
-outstanding as recorded in [Implementation next steps](./implementation-next-steps.md).
+The deployed Retell agent uses the published `v73` responsibility-component
+flow. The local `v74` replacement has eight isolated subflows with explicit
+diagram-based canvas positions and visible Call Transfer nodes. Its main canvas
+contains a silent caller-number preparation step, component entries, one
+responsibility router, two global human interruptions, and the final end node.
+Cross-responsibility changes pass `next_responsibility` and one
+`pending_request` to the destination, then clear both immediately after use; no
+rolling context variable is maintained. New Project, Existing Order, and
+General Knowledge each retain their own same-context follow-up questions.
+Release `v74` uses dedicated Extract Dynamic Variables nodes and deterministic
+equation gates before downstream routing or tool execution. Live phone-path and
+Twilio transfer QA remain outstanding as recorded in
+[Implementation next steps](./implementation-next-steps.md).
 No Workflow, Durable Object, Queue, or scheduled trigger is active.
 
 Retell design and historical GenSteel reference material are intentionally isolated in
@@ -75,7 +86,9 @@ behavior remain in this repository.
 8. [Product schema](./product-schema.md)
 9. [Commands](./commands.md)
 10. [QA validation](./qa-validation.md)
-11. [Detailed external-system research](./external-systems-reference.md)
+11. [Owner test-call findings and correction plan](./owner-test-call-findings.md)
+12. [Retell variable and routing risk audit](./retell-variable-and-routing-risk-audit.md)
+13. [Detailed external-system research](./external-systems-reference.md)
 
 ## Placement Rules
 

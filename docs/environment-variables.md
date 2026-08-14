@@ -40,7 +40,7 @@ The current Hyperdrive binding uses the shared Bradford config id defined in
 | `RETELL_API_KEY_GENSTONE` | Doppler command secret | Yes for Retell management/API operations | Authenticates GenStone Retell API calls from the draft deployment command. It is not uploaded to the Worker. | Retell API operations are unavailable. |
 | `RETELL_FROM_NUMBER_GENSTONE` | Doppler command config | Yes for GenStone telephony | GenStone Retell phone number used by call operations. It is not uploaded to the Worker. | Phone operations requiring the configured number are unavailable. |
 | `RETELL_WEBHOOK_API_KEY_GENSTONE` | Worker secret | Yes for Retell webhooks and custom functions | Retell-designated webhook API key used to verify `X-Retell-Signature`. | Webhooks and custom functions must be rejected. |
-| `SLACK_BOT_TOKEN` | Worker secret | Only if an approved Slack path is enabled | Authenticates Slack bot operations. | Slack operations are unavailable; no current caller path depends on Slack. |
+| `SLACK_BOT_TOKEN` | Worker secret | Yes for callback-failure escalation | Authenticates the private Slack alert sent to Travis when Customer.io cannot schedule a callback. | The callback still ends safely, but the agent must not claim the team was notified. |
 | `WOO_CONSUMER_KEY` | Worker secret | Yes for WooCommerce tools | WooCommerce REST consumer key. | Order and shipment lookups fail closed. |
 | `WOO_CONSUMER_SECRET` | Worker secret | Yes for WooCommerce tools | WooCommerce REST consumer secret. | Order and shipment lookups fail closed. |
 | `ZENDESK_GENSTONE_API_EMAIL` | Worker secret/config | Yes for tracked support | Canonical Zendesk API identity email. The client authenticates as `<email>/token`. | Case lookup/create/update fails closed. |

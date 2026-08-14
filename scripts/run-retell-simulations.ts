@@ -16,11 +16,12 @@ import {
   validateRetellSimulationToolCalls,
   type RetellSimulationTarget,
 } from "../retell/simulation-suite.js";
+import { RETELL_BUILD_CONSTANTS } from "../retell/build-config.js";
 
 const POLL_INTERVAL_MS = 5_000;
 const MAX_WAIT_MS = 20 * 60_000;
 const REPORT_DIRECTORY = "retell-qa-results";
-const AGENT_NAME = "GenStone Customer Agent";
+const OWNER_DEMO_COUNT = 3;
 
 function requireEnvironmentVariable(name: string): string {
   const value = process.env[name]?.trim();
@@ -144,29 +145,24 @@ async function upsertTestCaseDefinitions(
 async function resolveSimulationTarget(
   client: Retell,
 ): Promise<RetellSimulationTarget> {
-  const response = await client.agent.list({ limit: 100 });
-  const listedAgent = response.items?.find(
-    (candidate) => candidate.agent_name === AGENT_NAME,
+  const response = await client.conversationFlow.list({ limit: 100 });
+  const matches = (response.items ?? []).filter((flow) =>
+    (flow.notes ?? []).some(
+      (note) => note.id === RETELL_BUILD_CONSTANTS.flowRelease,
+    ),
   );
 
-  if (!listedAgent) {
-    throw new Error(`Retell agent ${AGENT_NAME} was not found.`);
+  if (matches.length !== 1) {
+    throw new Error(
+      `Expected exactly one ${RETELL_BUILD_CONSTANTS.flowRelease} flow; found ${matches.length}.`,
+    );
   }
 
-  const agent = await client.agent.retrieve(listedAgent.agent_id);
-
-  if (agent.response_engine.type !== "conversation-flow") {
-    throw new Error(`Retell agent ${AGENT_NAME} does not use Conversation Flow.`);
-  }
-
-  const version = agent.response_engine.version;
-  if (typeof version !== "number") {
-    throw new Error(`Retell agent ${AGENT_NAME} has no Conversation Flow version.`);
-  }
+  const flow = matches[0];
 
   return {
-    conversationFlowId: agent.response_engine.conversation_flow_id,
-    conversationFlowVersion: version,
+    conversationFlowId: flow.conversation_flow_id,
+    conversationFlowVersion: flow.version,
   };
 }
 
@@ -236,6 +232,11 @@ async function main() {
   });
   const target = await resolveSimulationTarget(client);
   const desiredDefinitions = buildRetellSimulationDefinitions(target);
+  if (desiredDefinitions.length !== OWNER_DEMO_COUNT) {
+    throw new Error(
+      `Expected exactly ${OWNER_DEMO_COUNT} owner demos; found ${desiredDefinitions.length}.`,
+    );
+  }
   const definitions = await upsertTestCaseDefinitions(
     client,
     desiredDefinitions,

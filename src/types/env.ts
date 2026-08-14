@@ -11,6 +11,7 @@ export interface CustomerAgentEnv {
   FIVE9_USERNAME?: string;
   FIVE9_PASSWORD?: string;
   RETELL_WEBHOOK_API_KEY_GENSTONE?: string;
+  SLACK_BOT_TOKEN?: string;
   WOO_CONSUMER_KEY?: string;
   WOO_CONSUMER_SECRET?: string;
   ZENDESK_GENSTONE_API_EMAIL?: string;

@@ -2,13 +2,15 @@ import type { Queryable } from "../persistence/db";
 import type { CustomerAgentEnv } from "../../types/env";
 import type {
   CallbackScheduleInput,
+  BusinessHoursStatusInput,
   ContactLookupInput,
   DncSuppressInput,
   EmployeeLookupInput,
+  OrderConfirmationInput,
   OrderLookupInput,
   ProspectFollowUpInput,
   ShipmentEmailInput,
-  SupportCaseCreateInput,
+  SupportFollowUpInput,
   VerifiedOrderInput,
 } from "../../schemas/retell-tools";
 import { failureResult, successResult, type ToolResult } from "../../types/tool-result";
@@ -19,17 +21,22 @@ import {
 import { sendCustomerIoEmail } from "../customerio/client";
 import { suppressFive9Number } from "../five9/client";
 import {
+  confirmOrderReference,
+  getNextOrderReference,
   getContactReference,
-  getOrderReference,
+  getVerifiedOrderReference,
   storeContactReference,
-  storeOrderReference,
+  storeOrderReferences,
 } from "../persistence/references-repository";
+import { findLatestOutcomeExternalReference } from "../persistence/outcomes-repository";
 import {
   lookupActiveEmployees,
   lookupSalesforceContact,
   SalesforceLookupError,
+  type SalesforceEmployee,
 } from "../salesforce/client";
-import { createZendeskCase } from "../zendesk/client";
+import { notifyCallbackSchedulingFailure } from "../slack/client";
+import { appendPrivateZendeskComment, createZendeskCase } from "../zendesk/client";
 import {
   findWooOrders,
   getStoredShipment,
@@ -76,20 +83,38 @@ export async function lookupEmployeeTool(
   input: EmployeeLookupInput,
 ): Promise<ToolResult> {
   const employees = await lookupActiveEmployees(env, input.employee_name);
-  const requestedName = normalizeName(input.employee_name);
+  return resolveEmployeeLookup(employees, input.employee_name);
+}
+
+export function resolveEmployeeLookup(
+  employees: SalesforceEmployee[],
+  requestedEmployeeName: string,
+): ToolResult {
+  if (employees.length === 0) {
+    return successResult("not_found", "No active employee matched that name.");
+  }
+
+  const requestedName = normalizeName(requestedEmployeeName);
   const exactMatches = employees.filter(
     (employee) => normalizeName(employee.name) === requestedName,
   );
 
-  if (exactMatches.length === 0) {
-    const resultCode = employees.length > 0 ? "ambiguous" : "not_found";
-    return successResult(resultCode, "No unique active employee match was found.");
-  }
   if (exactMatches.length > 1) {
     return successResult("ambiguous", "More than one active employee matched that name.");
   }
 
-  const employee = exactMatches[0];
+  if (exactMatches.length === 1) {
+    return employeeLookupResult(exactMatches[0]);
+  }
+
+  if (employees.length > 1) {
+    return successResult("ambiguous", "More than one active employee matched that name.");
+  }
+
+  return employeeLookupResult(employees[0]);
+}
+
+function employeeLookupResult(employee: SalesforceEmployee): ToolResult {
   if (!employee.phone) {
     return successResult("missing_number", "The employee does not have an eligible transfer number.");
   }
@@ -105,7 +130,14 @@ export async function lookupOrderTool(
   db: Queryable,
   input: OrderLookupInput,
 ): Promise<ToolResult> {
-  if (input.identifier_type !== "order_number" && !normalizeUsPhone(input.identifier)) {
+  if (input.previous_order_candidate_token) {
+    return lookupNextStoredOrder(env, db, input);
+  }
+
+  if (!input.identifier_type || !input.identifier) {
+    return failureResult("validation_failed", "A confirmed order lookup value is required.");
+  }
+  if (input.identifier_type === "phone" && !normalizeUsPhone(input.identifier)) {
     return failureResult("validation_failed", "The phone number could not be validated.");
   }
 
@@ -117,55 +149,97 @@ export async function lookupOrderTool(
     return successResult("not_found", "No matching order was found.");
   }
 
-  const actualOrders = sortNewestOrder(
+  const orderCandidates = sortNewestOrder(
     matches.filter((candidate) => candidate.status !== "quote"),
   );
-  const orderCandidates = actualOrders;
-  let order: WooOrderCandidate | undefined = orderCandidates[0];
-
-  if (input.previous_order_candidate_token) {
-    const previousOrder = await getOrderReference(
-      db,
-      getCompanyId(env),
-      input.call_id,
-      input.previous_order_candidate_token,
-    );
-    if (!previousOrder) {
-      return failureResult(
-        "validation_failed",
-        "The previous order candidate could not be validated.",
-      );
-    }
-
-    const previousIndex = orderCandidates.findIndex(
-      (candidate) => candidate.id === previousOrder.wooOrderId,
-    );
-    const nextIndex = previousIndex + 1;
-    order = previousIndex >= 0 && nextIndex < orderCandidates.length
-      ? orderCandidates[nextIndex]
-      : undefined;
-  }
-  if (!order) {
+  if (orderCandidates.length === 0) {
     return successResult("not_found", "No matching order was found.");
   }
 
-  const reference = await storeOrderReference(db, {
+  const references = await storeOrderReferences(db, {
     companyId: getCompanyId(env),
     callId: input.call_id,
-    wooOrderId: order.id,
-    orderNumber: order.number,
-    orderEmail: order.email,
-    orderPhone: order.phone,
-    items: order.items,
+    orders: orderCandidates.map((order) => ({
+      wooOrderId: order.id,
+      orderNumber: order.number,
+      orderEmail: order.email,
+      orderPhone: order.phone,
+      orderTypeSummary: summarizeOrderType(order.metadata),
+      orderStatusSummary: order.status,
+      items: order.items,
+    })),
   });
+  const reference = references[0];
+  if (!reference) {
+    return successResult("not_found", "No matching order was found.");
+  }
 
-  const itemSummary = summarizeItems(order.items);
+  return orderReferenceResult(reference);
+}
+
+export async function confirmOrderTool(
+  env: CustomerAgentEnv,
+  db: Queryable,
+  input: OrderConfirmationInput,
+): Promise<ToolResult> {
+  const reference = await confirmOrderReference(
+    db,
+    getCompanyId(env),
+    input.call_id,
+    input.order_candidate_token,
+  );
+
+  if (!reference) {
+    return failureResult("not_found", "The order confirmation could not be completed.");
+  }
+
+  return successResult("confirmed", "The order was confirmed.", {
+    order_candidate_token: reference.token,
+  });
+}
+
+async function lookupNextStoredOrder(
+  env: CustomerAgentEnv,
+  db: Queryable,
+  input: OrderLookupInput,
+): Promise<ToolResult> {
+  const reference = await getNextOrderReference(
+    db,
+    getCompanyId(env),
+    input.call_id,
+    input.previous_order_candidate_token!,
+  );
+  if (!reference) {
+    return successResult("no_more_candidates", "No additional matching order was found.");
+  }
+
+  return orderReferenceResult(reference);
+}
+
+function orderReferenceResult(reference: {
+  token: string;
+  orderTypeSummary?: string;
+  orderStatusSummary?: string;
+  items: Array<{ name: string; quantity: number }>;
+}): ToolResult {
   return successResult("found", "A candidate order was found and requires confirmation.", {
     order_candidate_token: reference.token,
-    order_type_summary: summarizeOrderType(order.metadata),
-    order_item_summary: itemSummary,
-    order_status_summary: order.status,
+    order_type_summary: reference.orderTypeSummary ?? "an order",
+    order_item_summary: summarizeItems(reference.items),
+    order_status_summary: reference.orderStatusSummary,
   });
+}
+
+export async function businessHoursStatusTool(
+  _env: CustomerAgentEnv,
+  _db: Queryable,
+  _input: BusinessHoursStatusInput,
+): Promise<ToolResult> {
+  if (isGenstoneBusinessOpen()) {
+    return successResult("open", "GenStone is currently within business hours.");
+  }
+
+  return successResult("closed", "GenStone is currently outside business hours.");
 }
 
 export async function lookupShipmentTool(
@@ -234,7 +308,18 @@ export async function scheduleCallbackTool(
       external_reference: deliveryReference,
     });
   } catch {
-    return failureResult("delivery_failed", "The callback request could not be delivered.");
+    const teamWasNotified = await notifyCallbackSchedulingFailure(env, input);
+    if (teamWasNotified) {
+      return failureResult(
+        "delivery_failed_notified",
+        "The callback could not be scheduled, and the team was notified.",
+      );
+    }
+
+    return failureResult(
+      "delivery_failed_unnotified",
+      "The callback could not be scheduled, and the internal alert also failed.",
+    );
   }
 }
 
@@ -308,32 +393,50 @@ export async function emailShipmentTool(
   }
 }
 
-export async function createSupportCaseTool(
+export async function recordSupportFollowUpTool(
   env: CustomerAgentEnv,
   db: Queryable,
-  input: SupportCaseCreateInput,
+  input: SupportFollowUpInput,
 ): Promise<ToolResult> {
-  const hasVerifiedOrder = Boolean(
-    input.order_candidate_token
-    && input.order_items_confirmed
-    && input.order_verified,
-  );
-  const orderReference = hasVerifiedOrder && input.order_candidate_token
-    ? await getOrderReference(
+  const orderReference = input.order_candidate_token
+    ? await getVerifiedOrderReference(
       db,
       getCompanyId(env),
       input.call_id,
       input.order_candidate_token,
     )
     : undefined;
-  if (hasVerifiedOrder && !orderReference) {
+  if (input.order_candidate_token && !orderReference) {
     return failureResult("validation_failed", "The confirmed order reference could not be validated.");
   }
 
   const comment = buildPrivateSupportComment(input, orderReference?.orderNumber);
+  const existingTicketId = await findLatestOutcomeExternalReference(db, {
+    companyId: getCompanyId(env),
+    callId: input.call_id,
+    outcomeType: "tracked_support",
+  });
+  if (existingTicketId) {
+    await appendPrivateZendeskComment(env, {
+      ticketId: existingTicketId,
+      privateComment: comment,
+    });
+    return successResult(
+      "updated",
+      "I'm letting our team know, and they'll be in touch as soon as possible.",
+      {
+      external_reference: existingTicketId,
+      },
+    );
+  }
+
+  const requesterEmail = resolveSupportRequesterEmail(
+    env.ENVIRONMENT,
+    input.customer_email,
+  );
   const ticketMetadata = {
     customerName: input.customer_name,
-    customerEmail: input.customer_email,
+    customerEmail: requesterEmail,
     phone: input.confirmed_phone,
     callerType: input.caller_type,
     country: input.caller_country,
@@ -373,9 +476,23 @@ export async function createSupportCaseTool(
     };
   }
 
-  return successResult("created", "The team follow-up was recorded.", {
-    external_reference: ticket.id,
-  });
+  return successResult(
+    "created",
+    "I'm letting our team know, and they'll be in touch as soon as possible.",
+    { external_reference: ticket.id },
+  );
+}
+
+
+export function resolveSupportRequesterEmail(
+  environment: string | undefined,
+  customerEmail: string,
+): string {
+  if (environment === "voice_qa") {
+    return "adeolamorren@gmail.com";
+  }
+
+  return customerEmail;
 }
 
 export async function suppressDncTool(
@@ -514,10 +631,7 @@ async function requireVerifiedOrderReference(
   db: Queryable,
   input: VerifiedOrderInput,
 ) {
-  if (!input.order_items_confirmed || !input.order_verified) {
-    return undefined;
-  }
-  return getOrderReference(
+  return getVerifiedOrderReference(
     db,
     getCompanyId(env),
     input.call_id,
@@ -526,7 +640,7 @@ async function requireVerifiedOrderReference(
 }
 
 function buildPrivateSupportComment(
-  input: SupportCaseCreateInput,
+  input: SupportFollowUpInput,
   orderNumber?: string,
 ): string {
   return [
@@ -576,6 +690,37 @@ export function isValidCallbackDateTime(
   }
 
   return true;
+}
+
+export function isGenstoneBusinessOpen(now: Date = new Date()): boolean {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Denver",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(
+    formatter.formatToParts(now).map((part) => [part.type, part.value]),
+  );
+  if (parts.weekday === "Sat" || parts.weekday === "Sun") {
+    return false;
+  }
+
+  const mountainDate = new Date(Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+  ));
+  if (isFederalHoliday(mountainDate)) {
+    return false;
+  }
+
+  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+  return minutes >= 8 * 60 + 30 && minutes <= 16 * 60 + 30;
 }
 
 function getTomorrowInMountainTime(now: Date): Date {

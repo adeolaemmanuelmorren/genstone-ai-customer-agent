@@ -17,9 +17,8 @@ the tool or storage checklist.
 - [x] Salesforce contact and employee lookup.
 - [x] WooCommerce order and shipment lookup.
 - [x] Customer.io callback, shipment, and internal case-notice emails.
-- [x] Zendesk creates one new private answering-service ticket for each
-  confirmed existing-order support call. The prior open-ticket matching and
-  update design was removed.
+- [x] Zendesk creates the first private answering-service ticket for an
+  unresolved call and appends later related call details as private comments.
 - [x] Five9 do-not-call suppression using `FIVE9_USERNAME` and
   `FIVE9_PASSWORD`; live suppression validation passed.
 
@@ -30,11 +29,8 @@ the tool or storage checklist.
   fallback.
 - [x] Attach only approved knowledge.
 - [x] Configure the GenSteel-derived voice and model settings.
-- [x] Create and read back the Retell draft agent through the API. The approved
-  build uses dedicated, versioned GenStone shared subflows because Retell's API
-  returns stable ids for shared subflows but exposes no usable id for embedded
-  local subflows. These subflows must never be reused by another agent or
-  edited in place; a changed release creates new versioned names and ids.
+- [x] Build local Retell release `v53` with main-flow tools and four owning
+  subagents. It has no shared-component transitions.
 - [x] Publish GenStone agent version `0`, bind the purchased Retell-managed
   Twilio number for inbound calls, and update the production Doppler
   from-number setting.
@@ -105,8 +101,55 @@ the tool or storage checklist.
 - [x] Remove the dedicated support-photo field from Retell, the Worker schema,
   Zendesk comments, and internal email data. Make support writes silent so
   they do not announce a generic lookup message.
+- [x] Create and provider-verify the immutable `v66` behavior rebuild with seven normal
+  responsibility subflows, terminal Human Escalation, resumable Named Employee
+  transfer, and intake-routed DNC. The draft is unpublished and unbound.
+- [x] Replace `v66` auto-layout with the `v67` clean-canvas build. Every node
+  has an explicit diagram-based position, and transfers are visible Call
+  Transfer nodes with explicit failure edges.
 - [ ] Run live phone-path and Twilio transfer QA on the bound number before
   wider rollout.
+- [x] Create and provider-verify the immutable `v67` draft. Agent
+  `agent_6361f738f0db11c11e28fcd410` uses Conversation Flow
+  `conversation_flow_dd94122b40ee`, version `0`; it remains unpublished and
+  unbound.
+- [x] Build local `v68`: make Understand Request initial intake only; keep
+  same-project follow-up inside New Project and additional general questions
+  inside General Knowledge; remove the generic Close or Continue component.
+- [x] Create and provider-verify the immutable `v68` draft. Agent
+  `agent_8b046ee2a101562736f6822a9f` uses Conversation Flow
+  `conversation_flow_0716a0a4a349`, version `0`; it remains unpublished and
+  unbound.
+- [x] Build local `v69`: keep later same-project questions in the New Project
+  continuation subagent instead of restarting its transfer/callback sequence.
+- [x] Create and provider-verify the immutable `v69` draft. Agent
+  `agent_4863348a135c633285041a504b` uses Conversation Flow
+  `conversation_flow_193ce1ce720d`, version `0`; it remains unpublished and
+  unbound.
+- [x] Build local `v70`: pass a one-time `pending_request` between responsibility
+  components, clear it immediately after the destination consumes it, remove
+  `current_context`, and terminate callback-delivery failures after attempting
+  a private Slack alert.
+- [x] Build local `v71`: merge callback success into New Project continuation,
+  consolidate callback failure speech, and replace terminal statement-to-silent-
+  exit chains with speaking component exits.
+- [x] Build local `v72`: use one responsibility router and one-time handoff,
+  clear verified-order state at permanent handoffs, replace persistent result
+  statuses with current-tool-result routing, use purpose-specific contact
+  variables, split verified and unverified support writes, derive caller last
+  four silently, and hide raw shipment/contact provider data from Retell.
+- [x] Build local `v73`: accept one unique eligible Salesforce employee from a
+  partial-name search; when several employees match, ask once for the full
+  name, retry, and then resume the interrupted conversation if no unique match
+  is found.
+- [x] Build local `v74`: move every conversational extraction into a dedicated
+  Extract Dynamic Variables node, validate captured values with equation
+  transitions, fail closed on unknown intake and human-request classifications,
+  and remove automatic knowledge-answer skip transitions.
+- [ ] Apply and provider-verify `v74`; no paid call or simulation is required for
+  the configuration readback.
+- [ ] Obtain owner approval before publishing `v74` and repinning the live
+  number.
 
 ### Superseded Retell Draft — 2026-08-09
 
@@ -130,9 +173,13 @@ phone-number binding.
 - Publish the pinned Retell version.
 
 The Worker is deployed as Cloudflare version
-`efd62f82-5dcc-4ea6-9faa-da0ce0aa8a96`. Reliability migration `0003` is
-applied. Retell release `v49` uses Conversation Flow
-`conversation_flow_99fd9a4d70ac`, version `0`; agent version `0` is published
-and pinned to the purchased inbound number. Live phone-path and Twilio transfer
-QA remain launch work. The Customer.io messages remain drafts pending launch
-validation and activation.
+`64a23a61-f2ab-4ead-983e-c0a53ca08d81`. Reliability migration `0003` is
+applied. The latest inspected production call used published GenStone agent
+`agent_4863348a135c633285041a504b`, agent version `2`, and Conversation Flow
+`conversation_flow_193ce1ce720d`, version `2`, named for release `v73`.
+Live phone-path and Twilio transfer QA remain launch work. The Customer.io
+messages remain drafts pending launch validation and activation.
+
+The active local candidate is `v74`. The published agent currently uses `v73`;
+`v74` supersedes it for the next deployment. No Retell call or paid simulation
+was run for `v74`.

@@ -408,6 +408,31 @@ actual outcomes for every release candidate.
   phone call, local automated test, or typecheck was run for `v40`, following
   the owner's instruction.
 
+## Owner Feedback Correction Candidate v50 — 2026-08-11
+
+- The repository contains a local `v50` candidate with seven versioned shared
+  components: Order and Customer Resolution, Project Coordinator Handoff,
+  Shipment, Customer Service Handoff, Callback, Named Employee Transfer, and
+  DNC.
+- The main flow uses subagents for intake, existing-order assistance, and the
+  single Continue Helping completion gate. Only Continue Helping can reach the
+  goodbye node.
+- Order resolution accepts confirmed phone, exact billing email, or order
+  number. A successful search stores all non-quote candidates once; rejected
+  candidates advance from PlanetScale without another WooCommerce lookup.
+- Phone-format searches execute concurrently and return on the first exact
+  normalized match.
+- New projects use the project-coordinator transfer during business hours and
+  Callback otherwise. Existing-order escalations try the two approved
+  customer-service lines sequentially before Zendesk fallback.
+- Retell responsiveness and interruption sensitivity are set to `0.85`. Echo
+  Verification remains disabled.
+- Main and Retell TypeScript checks pass. All 13 test files and 51 tests pass.
+  The Cloudflare dry-run bundled successfully; Wrangler could not write its
+  optional local log file because of the workspace sandbox.
+- No database migration, Worker deployment, Retell draft deployment, publish,
+  phone/web call, or paid Retell simulation was performed for `v50`.
+
 ## Confirmed-Identifier And Silent Contact Correction v49 — 2026-08-10
 
 - Retell release `v49` updated unpublished draft agent
@@ -700,3 +725,19 @@ actual outcomes for every release candidate.
 - The same Customer.io request now BCCs `travis.m@generalsteel.com`. Callback,
   prospect, and Zendesk case-notice recipient routing is unchanged.
 - No email, call, Retell simulation, ticket, or live tool-path test was run.
+
+## Retell Deterministic Extraction Candidate v74 — 2026-08-13
+
+- Replaced every Subagent-owned extraction tool with a dedicated Retell Extract
+  Dynamic Variables node followed by equation-based validation.
+- Unknown intake and human-escalation classifications fail closed by returning
+  to their owning question.
+- Order lookup, callback scheduling, shipment email, support follow-up, and
+  responsibility handoffs cannot proceed until their required captured values
+  are non-empty.
+- Removed automatic Skip User Response transitions from both knowledge-answer
+  paths.
+- All 15 test files and 91 tests pass. Main and Retell TypeScript checks pass,
+  and the repository diff has no whitespace errors.
+- No provider deployment, Retell call, paid simulation, email, Zendesk write,
+  Salesforce lookup, WooCommerce lookup, or transfer was run for `v74`.

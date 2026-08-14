@@ -12,10 +12,10 @@ const target = {
 };
 
 describe("Retell simulation suite", () => {
-  it("defines ten tests against the pinned draft flow", () => {
+  it("defines exactly three owner demos against the pinned draft flow", () => {
     const definitions = buildRetellSimulationDefinitions(target);
 
-    expect(definitions).toHaveLength(10);
+    expect(definitions).toHaveLength(3);
 
     for (const definition of definitions) {
       expect(definition.response_engine).toEqual({
@@ -45,34 +45,29 @@ describe("Retell simulation suite", () => {
     const definitions = buildRetellSimulationDefinitions(target);
 
     for (const definition of definitions) {
-      expect(definition.dynamic_variables).toMatchObject({
-        call_type: "web_call",
-        user_number: "+18085550101",
-      });
+      expect(definition.dynamic_variables?.call_type).toBe("phone_call");
+      expect(definition.dynamic_variables?.user_number).toBe("+13035550157");
       expect(definition.dynamic_variables?.call_id).toMatch(/^simulation_/);
     }
   });
 
   it("checks required and forbidden tools deterministically", () => {
-    const name = "GenStone v35 — Verified shipment email accepted";
+    const name = "GenStone v53-owner-demo — Travis 3 — Email lookup, shipment, and interrupted close";
     const correctTranscript = [
-      { role: "tool_call_invocation", name: "lookup_contact" },
       { role: "tool_call_invocation", name: "lookup_order" },
       { role: "tool_call_invocation", name: "lookup_shipment" },
-      { role: "tool_call_invocation", name: "email_shipment_tracking" },
       { role: "tool_call_invocation", name: "extract_dynamic_variables" },
     ];
 
     expect(validateRetellSimulationToolCalls(name, correctTranscript)).toEqual([]);
     expect(
       validateRetellSimulationToolCalls(name, [
-        ...correctTranscript.slice(0, 2),
-        { role: "tool_call_invocation", name: "create_support_case" },
+        ...correctTranscript.slice(0, 1),
+        { role: "tool_call_invocation", name: "record_support_follow_up" },
       ]),
     ).toEqual([
       "Required tool lookup_shipment was not invoked.",
-      "Required tool email_shipment_tracking was not invoked.",
-      "Forbidden tool create_support_case was invoked.",
+      "Forbidden tool record_support_follow_up was invoked.",
     ]);
   });
 });

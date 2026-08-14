@@ -54,14 +54,22 @@ Create the unpublished Retell Conversation Flow and voice-agent draft:
 npm run retell:deploy:draft
 ```
 
-The Retell command refuses to create a duplicate agent named
-`GenStone Customer Agent`. It creates dedicated versioned GenStone shared
-subflows and never updates one in place. A safe rerun after a partial failure
-reuses only an exact name whose complete repository-owned configuration still
-matches: prompts, nodes, edges, tools, parameters, URLs, headers, and model
-settings. Otherwise it stops. It reads publication and phone binding from
-Retell instead of printing assumed values. It does not publish or bind a phone
-number.
+The Retell command creates or reuses the immutable `v74` shared components. If
+the latest agent version is already published, it first creates a new editable
+draft from that published version. It then updates the matching draft
+Conversation Flow version and verifies that exact agent and flow version by
+API readback. It updates dashboard agent
+`agent_4863348a135c633285041a504b` by default, or the exact `RETELL_AGENT_ID`
+supplied by the operator. It never creates a parallel agent or a detached
+Conversation Flow. It reads publication and phone binding from Retell and does
+not publish or bind a phone number.
+
+Published Retell versions are immutable. To make the verified draft live,
+publish it and repoint the configured phone number with:
+
+```sh
+doppler run --config prd -- env RETELL_AGENT_ID=agent_4863348a135c633285041a504b npx tsx scripts/publish-and-bind-retell-agent.ts
+```
 
 ## Current Health Check
 

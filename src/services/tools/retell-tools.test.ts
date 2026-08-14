@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { isValidCallbackDateTime, summarizeShipment } from "./retell-tools";
+import {
+  isGenstoneBusinessOpen,
+  isValidCallbackDateTime,
+  resolveEmployeeLookup,
+  resolveSupportRequesterEmail,
+  summarizeShipment,
+} from "./retell-tools";
 import {
   CUSTOMERIO_MESSAGES,
   resolveShipmentEmailRecipient,
@@ -7,13 +13,56 @@ import {
 import {
   callbackScheduleSchema,
   contactLookupSchema,
+  orderLookupSchema,
   prospectFollowUpSchema,
   shipmentEmailSchema,
-  supportCaseCreateSchema,
+  supportFollowUpSchema,
   verifiedOrderSchema,
 } from "../../schemas/retell-tools";
 
 const NOW = new Date("2026-08-07T18:00:00.000Z");
+
+describe("named employee lookup", () => {
+  const travis = {
+    id: "005-travis",
+    name: "Travis McCarthy",
+    phone: "+13035550101",
+  };
+
+  it("accepts one unique eligible result for a first-name search", () => {
+    expect(resolveEmployeeLookup([travis], "Travis")).toEqual({
+      ok: true,
+      result_code: "found",
+      safe_summary: "A unique active employee was found.",
+      data: {
+        employee_name: "Travis McCarthy",
+        transfer_destination: "+13035550101",
+      },
+    });
+  });
+
+  it("uses one exact full-name match when a broad search returns several users", () => {
+    expect(resolveEmployeeLookup([
+      travis,
+      {
+        id: "005-travis-two",
+        name: "Travis Miller",
+        phone: "+13035550102",
+      },
+    ], "Travis McCarthy")).toHaveProperty("result_code", "found");
+  });
+
+  it("reports ambiguity when a partial name matches several eligible users", () => {
+    expect(resolveEmployeeLookup([
+      travis,
+      {
+        id: "005-travis-two",
+        name: "Travis Miller",
+        phone: "+13035550102",
+      },
+    ], "Travis")).toHaveProperty("result_code", "ambiguous");
+  });
+});
 
 describe("callback scheduling rules", () => {
   it("accepts a future weekday inside Mountain business hours", () => {
@@ -30,6 +79,20 @@ describe("callback scheduling rules", () => {
   });
 });
 
+describe("live transfer business hours", () => {
+  it("opens only during the approved Mountain-time window", () => {
+    expect(isGenstoneBusinessOpen(new Date("2026-08-10T14:30:00.000Z"))).toBe(true);
+    expect(isGenstoneBusinessOpen(new Date("2026-08-10T22:30:00.000Z"))).toBe(true);
+    expect(isGenstoneBusinessOpen(new Date("2026-08-10T14:29:00.000Z"))).toBe(false);
+    expect(isGenstoneBusinessOpen(new Date("2026-08-10T22:31:00.000Z"))).toBe(false);
+  });
+
+  it("closes on weekends and standard holidays", () => {
+    expect(isGenstoneBusinessOpen(new Date("2026-08-08T16:00:00.000Z"))).toBe(false);
+    expect(isGenstoneBusinessOpen(new Date("2026-09-07T16:00:00.000Z"))).toBe(false);
+  });
+});
+
 describe("primary route guards", () => {
   const callbackInput = {
     call_id: "call-1",
@@ -42,7 +105,6 @@ describe("primary route guards", () => {
     callback_time: "10:00",
     callback_phone: "+18085550101",
     customer_email: "caller@example.com",
-    callback_confirmed: true,
   };
 
   const supportInput = {
@@ -65,8 +127,8 @@ describe("primary route guards", () => {
   });
 
   it("accepts Zendesk writes only for existing orders", () => {
-    expect(supportCaseCreateSchema.safeParse(supportInput).success).toBe(true);
-    expect(supportCaseCreateSchema.safeParse({
+    expect(supportFollowUpSchema.safeParse(supportInput).success).toBe(true);
+    expect(supportFollowUpSchema.safeParse({
       ...supportInput,
       primary_route: "new_project",
     }).success).toBe(false);
@@ -92,7 +154,7 @@ describe("primary route guards", () => {
       project_summary: "Needs project information.",
       prospect_confirmed: true,
     }).success).toBe(false);
-    expect(supportCaseCreateSchema.safeParse({
+    expect(supportFollowUpSchema.safeParse({
       ...supportInput,
       support_summary_confirmed: true,
     }).success).toBe(false);
@@ -100,6 +162,26 @@ describe("primary route guards", () => {
 });
 
 describe("Retell dynamic-variable normalization", () => {
+  it("accepts any supported order identifier or a retained-candidate token", () => {
+    for (const [identifier_type, identifier] of [
+      ["phone", "+13035550100"],
+      ["email", "caller@example.com"],
+      ["order_number", "2505000137613"],
+    ]) {
+      expect(orderLookupSchema.safeParse({
+        call_id: "call-1",
+        identifier_type,
+        identifier,
+      }).success).toBe(true);
+    }
+
+    expect(orderLookupSchema.safeParse({
+      call_id: "call-1",
+      previous_order_candidate_token: "candidate-token",
+    }).success).toBe(true);
+    expect(orderLookupSchema.safeParse({ call_id: "call-1" }).success).toBe(false);
+  });
+
   it("omits unresolved optional values", () => {
     const result = contactLookupSchema.parse({
       call_id: "call-1",
@@ -114,15 +196,13 @@ describe("Retell dynamic-variable normalization", () => {
     });
   });
 
-  it("accepts Retell boolean substitutions without weakening confirmation", () => {
+  it("requires only the server-confirmed order reference for downstream reads", () => {
     expect(verifiedOrderSchema.parse({
       call_id: "call-1",
       order_candidate_token: "order-token",
-      order_items_confirmed: "true",
-      order_verified: "true",
-    })).toMatchObject({
-      order_items_confirmed: true,
-      order_verified: true,
+    })).toEqual({
+      call_id: "call-1",
+      order_candidate_token: "order-token",
     });
   });
 
@@ -131,9 +211,6 @@ describe("Retell dynamic-variable normalization", () => {
       call_id: "call-1",
       idempotency_key: "call-1:shipment-email",
       order_candidate_token: "order-token",
-      order_items_confirmed: true,
-      order_verified: true,
-      shipment_email_requested: true,
       shipment_email: "alternate.destination@example.com",
     }).success).toBe(true);
   });
@@ -162,5 +239,19 @@ describe("temporary shipment email safety override", () => {
     expect(CUSTOMERIO_MESSAGES.shipmentDetails.blindCopyRecipient).toBe(
       "travis.m@generalsteel.com",
     );
+  });
+});
+
+describe("generated-voice Zendesk safety override", () => {
+  it("uses the controlled inbox as the requester in the isolated QA Worker", () => {
+    expect(
+      resolveSupportRequesterEmail("voice_qa", "customer@example.com"),
+    ).toBe("adeolamorren@gmail.com");
+  });
+
+  it("keeps the caller email outside the isolated QA Worker", () => {
+    expect(
+      resolveSupportRequesterEmail("production", "customer@example.com"),
+    ).toBe("customer@example.com");
   });
 });

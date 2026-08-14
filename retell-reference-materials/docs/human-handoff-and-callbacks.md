@@ -1,6 +1,6 @@
 # Human Handoff And Callbacks
 
-GenStone has two human-handoff outcomes. They are chosen by what the caller
+GenStone has two human-handoff entry points. They are chosen by what the caller
 actually asks for, not by prompting the caller to select a department.
 
 ## 1. Named-Person Transfer
@@ -14,10 +14,9 @@ Use this only when the caller independently asks for a specific employee.
 4. Pass the direct number to Retell's Call Transfer node.
 5. Use a standard warm transfer with human detection and a private whisper to
    the employee before bridging the caller.
-6. If there is no unique valid target or the connection fails, tell the caller
-   the connection could not be completed and return to the primary route: a new
-   project uses centralized callback scheduling; an existing order uses the
-   Zendesk follow-up path.
+6. If there is no unique valid target, the caller declines, or the connection
+   fails, tell the caller the connection could not be completed and use
+   Retell's Go Back behavior to resume the interrupted conversation.
 
 Do not claim that an Active employee is currently available. Do not proactively
 ask which person or department the caller wants.
@@ -28,10 +27,29 @@ GenStone call and may include the caller's name and broad topic; it must not
 include unnecessary sensitive details. Confirm the display with one live
 transfer test before launch.
 
-## 2. Centralized Callback
+## 2. Generic Human Escalation
 
-Use the callback only for new-project follow-up, including a generic human
-request while on the new-project route. A callback is not booked on a
+A caller may ask for a person at any point. This is a global, terminal handoff
+path. It uses the current broad context and the conversation history Retell
+already provides; it does not maintain a separate handoff flag or rolling call
+summary.
+
+- New project: during business hours, transfer to the project coordinator at
+  `303-876-4333`. If unavailable, declined, failed, after hours, or on the web,
+  schedule a callback and end the call.
+- Existing order: during business hours, try customer service at
+  `303-647-1024` and `303-904-7205`. If neither connects, after hours, or on the
+  web, create the Zendesk follow-up and end the call.
+- Unknown or general: ask only whether this is about a new project or an
+  existing order, then use the corresponding path above.
+
+Do not return from Generic Human Escalation to the interrupted component. The
+path either transfers the caller or completes its fallback and closes.
+
+## 3. Centralized Callback
+
+Use the callback only for new-project follow-up, including the new-project
+branch of Generic Human Escalation. A callback is not booked on a
 particular coordinator's calendar. Customer.io sends the request internally to
 the manager address configured for GenStone. Existing-order callers are never
 asked to choose a callback time.
